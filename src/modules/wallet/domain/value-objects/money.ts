@@ -36,6 +36,13 @@ export class Money {
     return new Money(new Decimal(normalizedAmount), props.currency);
   }
 
+  static fromPersisted(props: MoneyProps): Money {
+    this.validatePersistedInput(props);
+    const decimal = new Decimal(props.amount);
+    const normalizedAmount = decimal.toFixed(2);
+    return new Money(new Decimal(normalizedAmount), props.currency);
+  }
+
   static zero(currency: string): Money {
     return new Money(new Decimal('0.00'), currency);
   }
@@ -171,6 +178,63 @@ export class Money {
 
     if (decimal.isNegative()) {
       throw new InvalidMoneyError('Amount cannot be negative in input');
+    }
+  }
+
+  private static validatePersistedInput(props: MoneyProps): void {
+    if (props.amount === undefined || props.amount === null) {
+      throw new InvalidMoneyError('Amount is required');
+    }
+
+    if (!props.currency || props.currency.trim().length === 0) {
+      throw new InvalidMoneyError('Currency is required');
+    }
+
+    if (props.currency.length !== 3) {
+      throw new InvalidMoneyError(
+        `Invalid currency format: ${props.currency}. Must be ISO-4217 (3 characters)`,
+      );
+    }
+
+    if (!/^[A-Z]{3}$/.test(props.currency)) {
+      throw new InvalidMoneyError(
+        `Invalid currency format: ${props.currency}. Must be uppercase letters only`,
+      );
+    }
+
+    const amountStr = props.amount.toString().trim();
+
+    if (amountStr.length === 0) {
+      throw new InvalidMoneyError('Amount cannot be empty');
+    }
+
+    const validFormat = /^-?\d+(\.\d{1,2})?$/.test(amountStr);
+    if (!validFormat) {
+      throw new InvalidMoneyError(
+        `Invalid amount format: ${amountStr}. Expected format: "100.00", "-100.00" or "100"`,
+      );
+    }
+
+    let decimal: Decimal;
+    try {
+      decimal = new Decimal(amountStr);
+    } catch {
+      throw new InvalidMoneyError(`Amount must be a valid number: ${amountStr}`);
+    }
+
+    if (!decimal.isFinite()) {
+      throw new InvalidMoneyError('Amount must be a finite number');
+    }
+
+    if (decimal.isNaN()) {
+      throw new InvalidMoneyError('Amount must be a valid number');
+    }
+
+    const decimalPlaces = amountStr.split('.')[1]?.length || 0;
+    if (decimalPlaces > 2) {
+      throw new InvalidMoneyError(
+        `Amount cannot have more than 2 decimal places: ${amountStr}`,
+      );
     }
   }
 }
