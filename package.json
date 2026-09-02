@@ -6,9 +6,22 @@
     "start": "bun src/main.ts",
     "start:dev": "bun --watch src/main.ts",
     "start:debug": "bun --inspect --watch src/main.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "mikro-orm": "bun ./node_modules/@mikro-orm/cli/cli.js",
+    "migration:create": "bun ./node_modules/@mikro-orm/cli/cli.js migration:create --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:up": "bun ./node_modules/@mikro-orm/cli/cli.js migration:up --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:down": "bun ./node_modules/@mikro-orm/cli/cli.js migration:down --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:list": "bun ./node_modules/@mikro-orm/cli/cli.js migration:list --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:check": "bun ./node_modules/@mikro-orm/cli/cli.js migration:check --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:pending": "bun ./node_modules/@mikro-orm/cli/cli.js migration:pending --config ./src/shared/database/mikro-orm.config.ts",
+    "migration:fresh": "bun ./node_modules/@mikro-orm/cli/cli.js migration:fresh --config ./src/shared/database/mikro-orm.config.ts",
+    "schema:create": "bun ./node_modules/@mikro-orm/cli/cli.js schema:create --config ./src/shared/database/mikro-orm.config.ts",
+    "schema:update": "bun ./node_modules/@mikro-orm/cli/cli.js schema:update --config ./src/shared/database/mikro-orm.config.ts",
+    "schema:drop": "bun ./node_modules/@mikro-orm/cli/cli.js schema:drop --config ./src/shared/database/mikro-orm.config.ts",
+    "schema:fresh": "bun ./node_modules/@mikro-orm/cli/cli.js schema:fresh --config ./src/shared/database/mikro-orm.config.ts"
   },
   "devDependencies": {
+    "@mikro-orm/cli": "^7.1.14",
     "@nestjs/cli": "^12.0.0",
     "@types/bun": "latest"
   },
@@ -16,9 +29,13 @@
     "typescript": "^7"
   },
   "dependencies": {
+    "@mikro-orm/core": "^7.1.14",
+    "@mikro-orm/postgresql": "^7.1.14",
+    "@mikro-orm/reflection": "^7.1.14",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "decimal.js": "^10.6.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   }
