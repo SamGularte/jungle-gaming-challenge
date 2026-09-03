@@ -10,7 +10,9 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [OutboxMessageEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
   });
 
@@ -20,7 +22,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(OutboxMessageEntity, {});
+    await orm.em.getConnection().execute('DELETE FROM outbox_messages');
   });
 
   describe('criação', () => {
@@ -29,7 +31,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef37',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: {
           walletId: 'wallet-123',
@@ -44,7 +46,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
       });
 
       expect(saved).toBeDefined();
-      expect(saved?.aggregateId).toBe('wallet-123');
+      expect(saved?.aggregateId).toBe('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(saved?.eventType).toBe('WalletBalanceChanged');
       expect(saved?.payload).toEqual({
         walletId: 'wallet-123',
@@ -61,7 +63,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
       const now = new Date();
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef38',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         nextAttemptAt: now,
@@ -82,7 +84,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
       const now = new Date();
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         publishedAt: now,
@@ -105,7 +107,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -131,7 +133,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -160,7 +162,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -186,7 +188,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef43',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -208,7 +210,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef45',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         nextAttemptAt: past,
@@ -231,7 +233,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef46',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         nextAttemptAt: future,
@@ -251,7 +253,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef48',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         attempts: 10,
@@ -273,7 +275,7 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef49',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
         attempts: -1,
@@ -301,12 +303,12 @@ describe('OutboxMessageEntity (MikroORM v7)', () => {
 
       const message = new OutboxMessageEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef50',
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: complexPayload,
       });
 
-      await expect(em.persist(message).flush()).resolves.not.toThrow();
+      await em.persist(message).flush();
     });
   });
 });

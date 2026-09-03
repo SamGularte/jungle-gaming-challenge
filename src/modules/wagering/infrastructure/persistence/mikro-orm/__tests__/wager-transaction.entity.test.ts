@@ -11,7 +11,9 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema, WagerTransactionEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
   });
 
@@ -21,8 +23,8 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(WagerTransactionEntity, {});
-    await orm.em.nativeDelete(WalletEntity, {});
+    await orm.em.fork().execute('DELETE FROM wager_transactions');
+    await orm.em.fork().execute('DELETE FROM wallets');
   });
 
   describe('criação', () => {
@@ -31,7 +33,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef37',
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02001',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -41,11 +43,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef38',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-001',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         idempotencyKey: 'provider-a:ext-001',
         payloadHash: 'a'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02001',
         roundId: 'round-001',
         gameId: 'game-001',
         kind: 'BET',
@@ -72,7 +74,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02002',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -82,18 +84,18 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-002',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         idempotencyKey: 'provider-a:ext-002',
         payloadHash: 'b'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02002',
         roundId: 'round-002',
         gameId: 'game-002',
         kind: 'WIN',
         amount: '50.00',
         currency: 'BRL',
         status: 'PENDING',
-        referenceExternalTransactionId: 'ext-001',
+        referenceExternalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
       });
 
       await em.persist(transaction).flush();
@@ -103,7 +105,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       });
 
       expect(saved?.kind).toBe('WIN');
-      expect(saved?.referenceExternalTransactionId).toBe('ext-001');
+      expect(saved?.referenceExternalTransactionId).toBe('0192f291-27dd-7d3f-8071-5f8685deef01');
     });
   });
 
@@ -113,7 +115,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef47',
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02006',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -123,11 +125,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef48',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-006',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef06',
         idempotencyKey: 'provider-a:ext-006',
         payloadHash: 'f'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02006',
         roundId: 'round-006',
         gameId: 'game-006',
         kind: 'BET',
@@ -139,7 +141,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       await em.persist(transaction).flush();
 
       const now = new Date();
-      transaction.markProcessed('ref-001', now);
+      transaction.markProcessed('0192f291-27dd-7d3f-8071-5f8685deef01', now);
       await em.flush();
 
       const saved = await em.findOne(WagerTransactionEntity, {
@@ -147,7 +149,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       });
 
       expect(saved?.status).toBe('PROCESSED');
-      expect(saved?.referenceTransactionId).toBe('ref-001');
+      expect(saved?.referenceTransactionId).toBe('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(saved?.processedAt).toBeDefined();
     });
 
@@ -156,7 +158,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef49',
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02007',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -166,11 +168,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef50',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-007',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef07',
         idempotencyKey: 'provider-a:ext-007',
         payloadHash: 'g'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02007',
         roundId: 'round-007',
         gameId: 'game-007',
         kind: 'BET',
@@ -198,7 +200,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef51',
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02008',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -208,11 +210,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef52',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-008',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef08',
         idempotencyKey: 'provider-a:ext-008',
         payloadHash: 'h'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02008',
         roundId: 'round-008',
         gameId: 'game-008',
         kind: 'BET',
@@ -240,7 +242,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef53',
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02009',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -250,18 +252,18 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef54',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-009',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef09',
         idempotencyKey: 'provider-a:ext-009',
         payloadHash: 'i'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02009',
         roundId: 'round-009',
         gameId: 'game-009',
         kind: 'REFUND',
         amount: '25.00',
         currency: 'BRL',
         status: 'PENDING',
-        referenceExternalTransactionId: 'ext-001',
+        referenceExternalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
       });
 
       await em.persist(transaction).flush();
@@ -283,7 +285,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef55',
-        playerId: 'player-010',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02010',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -293,11 +295,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction1 = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef56',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-010',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef10',
         idempotencyKey: 'same-key',
         payloadHash: 'j'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-010',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02010',
         roundId: 'round-010',
         gameId: 'game-010',
         kind: 'BET',
@@ -311,11 +313,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction2 = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef57',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-011',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef11',
         idempotencyKey: 'same-key',
         payloadHash: 'k'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-010',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02010',
         roundId: 'round-010',
         gameId: 'game-010',
         kind: 'BET',
@@ -332,7 +334,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef58',
-        playerId: 'player-011',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02011',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -342,11 +344,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction1 = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef59',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-012',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef12',
         idempotencyKey: 'provider-a:ext-012',
         payloadHash: 'l'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-011',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02011',
         roundId: 'round-011',
         gameId: 'game-011',
         kind: 'BET',
@@ -360,11 +362,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction2 = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef60',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-012',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef12',
         idempotencyKey: 'provider-a:ext-013',
         payloadHash: 'm'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-011',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02011',
         roundId: 'round-011',
         gameId: 'game-011',
         kind: 'BET',
@@ -381,7 +383,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef61',
-        playerId: 'player-012',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02012',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -391,11 +393,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef62',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-014',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef14',
         idempotencyKey: 'provider-a:ext-014',
         payloadHash: 'n'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-012',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02012',
         roundId: 'round-012',
         gameId: 'game-012',
         kind: 'INVALID',
@@ -412,7 +414,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef65',
-        playerId: 'player-014',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02014',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -422,11 +424,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
       const transaction = new WagerTransactionEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef66',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-016',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef16',
         idempotencyKey: 'provider-a:ext-016',
         payloadHash: 'p'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-014',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02014',
         roundId: 'round-014',
         gameId: 'game-014',
         kind: 'BET',
@@ -445,7 +447,7 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef67',
-        playerId: 'player-015',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02015',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -456,11 +458,11 @@ describe('WagerTransactionEntity (MikroORM v7)', () => {
         const transaction = new WagerTransactionEntity({
           id: `0192f291-27dd-7d3f-8071-5f8685deef6${i}`,
           providerId: 'provider-a',
-          externalTransactionId: `ext-${i}`,
+          externalTransactionId: `0192f291-27dd-7d3f-8071-5f8685deef${String(i).padStart(2, '0')}`,
           idempotencyKey: `provider-a:ext-${i}`,
           payloadHash: 'a'.repeat(64),
           walletId: wallet.id,
-          playerId: 'player-015',
+          playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02015',
           roundId: `round-${i}`,
           gameId: 'game-015',
           kind: 'BET',

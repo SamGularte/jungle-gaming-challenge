@@ -60,7 +60,16 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
 
   async save(transaction: WagerTransaction): Promise<void> {
     const entity = this.toEntity(transaction);
-    await this.em.persist(entity).flush();
+    const managed = await this.em.findOne(WagerTransactionEntity, { id: transaction.id });
+    if (managed) {
+      managed.status = transaction.status;
+      managed.processedAt = transaction.processedAt;
+      managed.referenceTransactionId = transaction.referenceTransactionId;
+      managed.failureCode = transaction.failureCode;
+      await this.em.flush();
+    } else {
+      await this.em.persist(entity).flush();
+    }
   }
 
   async saveMany(transactions: WagerTransaction[]): Promise<void> {

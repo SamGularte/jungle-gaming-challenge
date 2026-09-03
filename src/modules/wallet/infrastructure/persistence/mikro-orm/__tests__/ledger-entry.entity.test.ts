@@ -11,7 +11,9 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema, LedgerEntryEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
   });
 
@@ -21,8 +23,8 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(LedgerEntryEntity, {});
-    await orm.em.nativeDelete(WalletEntity, {});
+    await orm.em.fork().execute('DELETE FROM ledger_entries');
+    await orm.em.fork().execute('DELETE FROM wallets');
   });
 
   describe('criação', () => {
@@ -31,7 +33,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef37',
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01001',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -41,7 +43,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef38',
         walletId: wallet.id,
-        transactionId: 'tx-001',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         direction: 'DEBIT',
         amount: '25.00',
         currency: 'BRL',
@@ -69,7 +71,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01002',
         currency: 'BRL',
         balance: '50.00',
         version: 1,
@@ -79,7 +81,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
         walletId: wallet.id,
-        transactionId: 'tx-002',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         direction: 'CREDIT',
         amount: '30.00',
         currency: 'BRL',
@@ -103,9 +105,9 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-        playerId: 'player-003',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01003',
         currency: 'BRL',
-        balance: '-50.00',
+        balance: '100.00',
         version: 1,
       });
       await em.persist(wallet).flush();
@@ -113,12 +115,12 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
         walletId: wallet.id,
-        transactionId: 'tx-003',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef03',
         direction: 'DEBIT',
-        amount: '25.00',
+        amount: '150.00',
         currency: 'BRL',
-        balanceBefore: '-50.00',
-        balanceAfter: '-75.00',
+        balanceBefore: '100.00',
+        balanceAfter: '-50.00',
       });
 
       await em.persist(entry).flush();
@@ -127,8 +129,8 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
       });
 
-      expect(saved?.balanceBefore).toBe('-50.00');
-      expect(saved?.balanceAfter).toBe('-75.00');
+      expect(saved?.balanceBefore).toBe('100.00');
+      expect(saved?.balanceAfter).toBe('-50.00');
     });
   });
 
@@ -138,7 +140,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef43',
-        playerId: 'player-004',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01004',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -148,7 +150,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef44',
         walletId: wallet.id,
-        transactionId: 'tx-004',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef04',
         direction: 'INVALID',
         amount: '25.00',
         currency: 'BRL',
@@ -164,7 +166,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef45',
-        playerId: 'player-005',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01005',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -174,7 +176,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef46',
         walletId: wallet.id,
-        transactionId: 'tx-005',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef05',
         direction: 'DEBIT',
         amount: '25.00',
         currency: 'XXX',
@@ -190,7 +192,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef47',
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01006',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -200,7 +202,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry1 = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef48',
         walletId: wallet.id,
-        transactionId: 'tx-006',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef06',
         direction: 'DEBIT',
         amount: '25.00',
         currency: 'BRL',
@@ -211,7 +213,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
       const entry2 = new LedgerEntryEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef49',
         walletId: wallet.id,
-        transactionId: 'tx-007',
+        transactionId: '0192f291-27dd-7d3f-8071-5f8685deef07',
         direction: 'CREDIT',
         amount: '50.00',
         currency: 'BRL',
@@ -233,7 +235,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
 
       const wallet = new WalletEntity({
         id: '0192f291-27dd-7d3f-8071-5f8685deef50',
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01007',
         currency: 'BRL',
         balance: '100.00',
         version: 1,
@@ -244,7 +246,7 @@ describe('LedgerEntryEntity (MikroORM v7)', () => {
         const entry = new LedgerEntryEntity({
           id: `0192f291-27dd-7d3f-8071-5f8685deef5${i}`,
           walletId: wallet.id,
-          transactionId: `tx-00${i}`,
+          transactionId: ['0192f291-27dd-7d3f-8071-5f8685deef00','0192f291-27dd-7d3f-8071-5f8685deef01','0192f291-27dd-7d3f-8071-5f8685deef02','0192f291-27dd-7d3f-8071-5f8685deef03','0192f291-27dd-7d3f-8071-5f8685deef04','0192f291-27dd-7d3f-8071-5f8685deef05','0192f291-27dd-7d3f-8071-5f8685deef06','0192f291-27dd-7d3f-8071-5f8685deef07','0192f291-27dd-7d3f-8071-5f8685deef08','0192f291-27dd-7d3f-8071-5f8685deef09'][i],
           direction: i % 2 === 0 ? 'DEBIT' : 'CREDIT',
           amount: '10.00',
           currency: 'BRL',

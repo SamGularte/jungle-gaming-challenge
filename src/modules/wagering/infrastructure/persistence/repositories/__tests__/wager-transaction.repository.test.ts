@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { MikroORM } from '@mikro-orm/postgresql';
+import { MikroORM, EntityManager } from '@mikro-orm/postgresql';
 import { WagerTransactionRepository } from '../wager-transaction.repository';
 import { WalletRepository } from '../../../../../wallet/infrastructure/persistence/repositories/wallet.repository';
 import { WagerTransaction } from '../../../../domain/aggregates/wager-transaction';
@@ -13,16 +13,22 @@ describe('WagerTransactionRepository', () => {
   let orm: MikroORM;
   let walletRepository: WalletRepository;
   let transactionRepository: WagerTransactionRepository;
+  let walletEm: EntityManager;
+  let transactionEm: EntityManager;
 
   beforeAll(async () => {
     orm = await MikroORM.init({
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema, WagerTransactionEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
-    walletRepository = new WalletRepository(orm.em);
-    transactionRepository = new WagerTransactionRepository(orm.em);
+    walletEm = orm.em.fork();
+    transactionEm = orm.em.fork();
+    walletRepository = new WalletRepository(walletEm);
+    transactionRepository = new WagerTransactionRepository(transactionEm);
   });
 
   afterAll(async () => {
@@ -31,15 +37,17 @@ describe('WagerTransactionRepository', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(WagerTransactionEntity, {});
-    await orm.em.nativeDelete(WalletEntity, {});
+    await transactionEm.execute('DELETE FROM wager_transactions');
+    await walletEm.execute('DELETE FROM wallets');
+    walletEm.clear();
+    transactionEm.clear();
   });
 
   describe('save()', () => {
     it('deve salvar uma transação BET', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef37',
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02001',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -47,11 +55,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef38',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-001',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         idempotencyKey: 'provider-a:ext-001',
         payloadHash: 'a'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02001',
         roundId: 'round-001',
         gameId: 'game-001',
         kind: WagerTransactionKind.BET,
@@ -70,7 +78,7 @@ describe('WagerTransactionRepository', () => {
     it('deve salvar e atualizar uma transação', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02002',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -78,11 +86,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-002',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         idempotencyKey: 'provider-a:ext-002',
         payloadHash: 'b'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02002',
         roundId: 'round-002',
         gameId: 'game-002',
         kind: WagerTransactionKind.BET,
@@ -104,7 +112,7 @@ describe('WagerTransactionRepository', () => {
     it('deve buscar transação por idempotencyKey', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-        playerId: 'player-003',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02003',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -112,11 +120,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-003',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef03',
         idempotencyKey: 'unique-key-123',
         payloadHash: 'c'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-003',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02003',
         roundId: 'round-003',
         gameId: 'game-003',
         kind: WagerTransactionKind.BET,
@@ -140,7 +148,7 @@ describe('WagerTransactionRepository', () => {
     it('deve buscar transação por providerId e externalTransactionId', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef43',
-        playerId: 'player-004',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02004',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -148,11 +156,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef44',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-004',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef04',
         idempotencyKey: 'provider-a:ext-004',
         payloadHash: 'd'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-004',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02004',
         roundId: 'round-004',
         gameId: 'game-004',
         kind: WagerTransactionKind.BET,
@@ -163,7 +171,7 @@ describe('WagerTransactionRepository', () => {
 
       const found = await transactionRepository.findByProviderAndExternalId(
         'provider-a',
-        'ext-004',
+        '0192f291-27dd-7d3f-8071-5f8685deef04',
       );
       expect(found).toBeDefined();
       expect(found?.id).toBe(transaction.id);
@@ -182,7 +190,7 @@ describe('WagerTransactionRepository', () => {
     it('deve buscar transações com paginação', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef45',
-        playerId: 'player-005',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02005',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -192,11 +200,11 @@ describe('WagerTransactionRepository', () => {
         const tx = WagerTransaction.create({
           id: `0192f291-27dd-7d3f-8071-5f8685deef4${i}`,
           providerId: 'provider-a',
-          externalTransactionId: `ext-${i}`,
+          externalTransactionId: `0192f291-27dd-7d3f-8071-5f8685deef${String(i).padStart(2, '0')}`,
           idempotencyKey: `provider-a:ext-${i}`,
           payloadHash: 'a'.repeat(64),
           walletId: wallet.id,
-          playerId: 'player-005',
+          playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02005',
           roundId: `round-${i}`,
           gameId: 'game-005',
           kind: WagerTransactionKind.BET,
@@ -216,7 +224,7 @@ describe('WagerTransactionRepository', () => {
     it('deve buscar transações por status', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef50',
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02006',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -224,11 +232,11 @@ describe('WagerTransactionRepository', () => {
       const tx1 = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef51',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-010',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef10',
         idempotencyKey: 'provider-a:ext-010',
         payloadHash: 'a'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02006',
         roundId: 'round-010',
         gameId: 'game-006',
         kind: WagerTransactionKind.BET,
@@ -242,11 +250,11 @@ describe('WagerTransactionRepository', () => {
       const tx2 = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef52',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-011',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef11',
         idempotencyKey: 'provider-a:ext-011',
         payloadHash: 'b'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02006',
         roundId: 'round-011',
         gameId: 'game-006',
         kind: WagerTransactionKind.BET,
@@ -268,7 +276,7 @@ describe('WagerTransactionRepository', () => {
     it('deve buscar transações pendentes de referência', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef53',
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02007',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -276,16 +284,16 @@ describe('WagerTransactionRepository', () => {
       const refund = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef54',
         providerId: 'provider-a',
-        externalTransactionId: 'refund-001',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         idempotencyKey: 'provider-a:refund-001',
         payloadHash: 'c'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02007',
         roundId: 'round-012',
         gameId: 'game-007',
         kind: WagerTransactionKind.REFUND,
         money: Money.from({ amount: '25.00', currency: 'BRL' }),
-        referenceExternalTransactionId: 'bet-001',
+        referenceExternalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef01',
       });
       await transactionRepository.save(refund);
 
@@ -303,7 +311,7 @@ describe('WagerTransactionRepository', () => {
     it('deve retornar true se idempotencyKey existe', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef55',
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02008',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -311,11 +319,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef56',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-012',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef12',
         idempotencyKey: 'exists-key',
         payloadHash: 'd'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02008',
         roundId: 'round-013',
         gameId: 'game-008',
         kind: WagerTransactionKind.BET,
@@ -338,7 +346,7 @@ describe('WagerTransactionRepository', () => {
     it('deve atualizar o status de uma transação', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef57',
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02009',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -346,11 +354,11 @@ describe('WagerTransactionRepository', () => {
       const transaction = WagerTransaction.create({
         id: '0192f291-27dd-7d3f-8071-5f8685deef58',
         providerId: 'provider-a',
-        externalTransactionId: 'ext-013',
+        externalTransactionId: '0192f291-27dd-7d3f-8071-5f8685deef13',
         idempotencyKey: 'provider-a:ext-013',
         payloadHash: 'e'.repeat(64),
         walletId: wallet.id,
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a02009',
         roundId: 'round-014',
         gameId: 'game-009',
         kind: WagerTransactionKind.BET,

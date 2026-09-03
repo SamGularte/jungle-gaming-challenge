@@ -33,7 +33,13 @@ export class WalletRepository implements WalletRepositoryPort {
 
   async save(wallet: Wallet): Promise<void> {
     const entity = this.toEntity(wallet);
-    await this.em.persist(entity).flush();
+    const managed = await this.em.findOne(WalletEntity, { id: wallet.id });
+    if (managed) {
+      managed.updateBalance(wallet.balance.toAmountString(), wallet.version);
+      await this.em.flush();
+    } else {
+      await this.em.persist(entity).flush();
+    }
   }
 
   async findById(id: string): Promise<Wallet | null> {

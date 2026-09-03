@@ -10,7 +10,9 @@ describe('WalletEntity (MikroORM v7)', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
   });
 
@@ -20,7 +22,7 @@ describe('WalletEntity (MikroORM v7)', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(WalletEntity, {});
+    await orm.em.fork().execute('DELETE FROM wallets');
   });
 
   it('deve criar uma wallet com sucesso', async () => {
@@ -50,7 +52,7 @@ describe('WalletEntity (MikroORM v7)', () => {
 
     const wallet = new WalletEntity({
       id: '0192f291-27dd-7d3f-8071-5f8685deef38',
-      playerId: 'player-002',
+      playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4a2',
       currency: 'BRL',
       balance: '100.00',
       version: 1,
@@ -74,7 +76,7 @@ describe('WalletEntity (MikroORM v7)', () => {
 
     const wallet1 = new WalletEntity({
       id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-      playerId: 'player-003',
+      playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4a3',
       currency: 'BRL',
       balance: '100.00',
       version: 1,
@@ -84,7 +86,7 @@ describe('WalletEntity (MikroORM v7)', () => {
 
     const wallet2 = new WalletEntity({
       id: '0192f291-27dd-7d3f-8071-5f8685deef40',
-      playerId: 'player-003',
+      playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4a3',
       currency: 'BRL',
       balance: '200.00',
       version: 1,
@@ -98,7 +100,7 @@ describe('WalletEntity (MikroORM v7)', () => {
 
     const wallet = new WalletEntity({
       id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-      playerId: 'player-004',
+      playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4a4',
       currency: 'BRL',
       balance: '-10.00',
       version: 1,

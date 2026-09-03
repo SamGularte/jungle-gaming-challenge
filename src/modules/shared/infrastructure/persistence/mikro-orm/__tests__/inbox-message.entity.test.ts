@@ -10,7 +10,9 @@ describe('InboxMessageEntity (MikroORM v7)', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [InboxMessageEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
   });
 
@@ -20,7 +22,8 @@ describe('InboxMessageEntity (MikroORM v7)', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(InboxMessageEntity, {});
+    await orm.em.getConnection().execute('DELETE FROM inbox_messages');
+    orm.em.clear();
   });
 
   describe('criação', () => {
@@ -149,7 +152,7 @@ describe('InboxMessageEntity (MikroORM v7)', () => {
         payloadHash: 'a'.repeat(64),
       });
 
-      await expect(em.persist(message).flush()).resolves.not.toThrow();
+      await em.persist(message).flush();
     });
   });
 

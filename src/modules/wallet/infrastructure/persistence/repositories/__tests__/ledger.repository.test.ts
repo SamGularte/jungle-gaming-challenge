@@ -18,10 +18,12 @@ describe('LedgerRepository', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema, LedgerEntryEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
-    walletRepository = new WalletRepository(orm.em);
-    ledgerRepository = new LedgerRepository(orm.em);
+    walletRepository = new WalletRepository(orm.em.fork());
+    ledgerRepository = new LedgerRepository(orm.em.fork());
   });
 
   afterAll(async () => {
@@ -30,27 +32,27 @@ describe('LedgerRepository', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(LedgerEntryEntity, {});
-    await orm.em.nativeDelete(WalletEntity, {});
+    await orm.em.fork().execute('DELETE FROM ledger_entries');
+    await orm.em.fork().execute('DELETE FROM wallets');
   });
 
   describe('save()', () => {
     it('deve salvar uma entrada de ledger', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef37',
-        playerId: 'player-001',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01001',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
 
       const entry = wallet.debit(
         Money.from({ amount: '25.00', currency: 'BRL' }),
-        'tx-001',
+        '0192f291-27dd-7d3f-8071-5f8685deef01',
       );
 
       await ledgerRepository.save(entry);
 
-      const saved = await ledgerRepository.findByTransactionId('tx-001');
+      const saved = await ledgerRepository.findByTransactionId('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(saved).toBeDefined();
       expect(saved?.id).toBe(entry.id);
       expect(saved?.money.toJSON()).toEqual(entry.money.toJSON());
@@ -62,19 +64,19 @@ describe('LedgerRepository', () => {
     it('deve salvar múltiplas entradas', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef38',
-        playerId: 'player-002',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01002',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
 
       const entry1 = wallet.debit(
         Money.from({ amount: '25.00', currency: 'BRL' }),
-        'tx-001',
+        '0192f291-27dd-7d3f-8071-5f8685deef01',
       );
 
       const entry2 = wallet.credit(
         Money.from({ amount: '50.00', currency: 'BRL' }),
-        'tx-002',
+        '0192f291-27dd-7d3f-8071-5f8685deef02',
       );
 
       await ledgerRepository.saveMany([entry1, entry2]);
@@ -88,7 +90,7 @@ describe('LedgerRepository', () => {
     it('deve buscar entradas com paginação', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        playerId: 'player-003',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01003',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -97,7 +99,7 @@ describe('LedgerRepository', () => {
       for (let i = 0; i < 5; i++) {
         const entry = wallet.debit(
           Money.from({ amount: '10.00', currency: 'BRL' }),
-          `tx-${i}`,
+          `0192f291-27dd-7d3f-8071-5f8685deef${i.toString(16).padStart(2, '0')}`,
         );
         entries.push(entry);
       }
@@ -111,7 +113,7 @@ describe('LedgerRepository', () => {
     it('deve retornar entradas vazio para wallet sem entradas', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
-        playerId: 'player-004',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01004',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -126,24 +128,24 @@ describe('LedgerRepository', () => {
     it('deve buscar entrada por transactionId', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-        playerId: 'player-005',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01005',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
 
       const entry = wallet.debit(
         Money.from({ amount: '25.00', currency: 'BRL' }),
-        'tx-001',
+        '0192f291-27dd-7d3f-8071-5f8685deef01',
       );
       await ledgerRepository.save(entry);
 
-      const found = await ledgerRepository.findByTransactionId('tx-001');
+      const found = await ledgerRepository.findByTransactionId('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(found).toBeDefined();
       expect(found?.id).toBe(entry.id);
     });
 
     it('deve retornar null para transactionId inexistente', async () => {
-      const found = await ledgerRepository.findByTransactionId('nonexistent');
+      const found = await ledgerRepository.findByTransactionId('00000000-0000-0000-0000-000000000000');
       expect(found).toBeNull();
     });
   });
@@ -152,20 +154,20 @@ describe('LedgerRepository', () => {
     it('deve buscar a última entrada da wallet', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01006',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
 
       const entry1 = wallet.debit(
         Money.from({ amount: '25.00', currency: 'BRL' }),
-        'tx-001',
+        '0192f291-27dd-7d3f-8071-5f8685deef01',
       );
       await ledgerRepository.save(entry1);
 
       const entry2 = wallet.debit(
         Money.from({ amount: '30.00', currency: 'BRL' }),
-        'tx-002',
+        '0192f291-27dd-7d3f-8071-5f8685deef02',
       );
       await ledgerRepository.save(entry2);
 
@@ -177,7 +179,7 @@ describe('LedgerRepository', () => {
     it('deve retornar null para wallet sem entradas', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef43',
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01007',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -191,7 +193,7 @@ describe('LedgerRepository', () => {
     it('deve calcular o saldo a partir do ledger', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef44',
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01008',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -200,7 +202,7 @@ describe('LedgerRepository', () => {
       for (let i = 0; i < 3; i++) {
         const entry = wallet.debit(
           Money.from({ amount: '10.00', currency: 'BRL' }),
-          `tx-${i}`,
+          `0192f291-27dd-7d3f-8071-5f8685deef${i.toString(16).padStart(2, '0')}`,
         );
         entries.push(entry);
       }
@@ -213,7 +215,7 @@ describe('LedgerRepository', () => {
     it('deve retornar zero para wallet sem entradas', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef45',
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01009',
         initialBalance: Money.from({ amount: '0.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -227,7 +229,7 @@ describe('LedgerRepository', () => {
     it('deve contar entradas da wallet', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef46',
-        playerId: 'player-010',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01010',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);
@@ -236,7 +238,7 @@ describe('LedgerRepository', () => {
       for (let i = 0; i < 10; i++) {
         const entry = wallet.debit(
           Money.from({ amount: '10.00', currency: 'BRL' }),
-          `tx-${i}`,
+          `0192f291-27dd-7d3f-8071-5f8685deef${i.toString(16).padStart(2, '0')}`,
         );
         entries.push(entry);
       }
@@ -249,7 +251,7 @@ describe('LedgerRepository', () => {
     it('deve retornar 0 para wallet sem entradas', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef47',
-        playerId: 'player-011',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a01011',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
       await walletRepository.save(wallet);

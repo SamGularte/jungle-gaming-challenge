@@ -14,9 +14,11 @@ describe('WalletRepository', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [WalletEntitySchema],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
-    repository = new WalletRepository(orm.em);
+    repository = new WalletRepository(orm.em.fork());
   });
 
   afterAll(async () => {
@@ -25,7 +27,8 @@ describe('WalletRepository', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(WalletEntity, {});
+    await orm.em.fork().execute('DELETE FROM wallets');
+    repository = new WalletRepository(orm.em.fork());
   });
 
   describe('save()', () => {
@@ -65,7 +68,7 @@ describe('WalletRepository', () => {
     it('deve salvar wallet com saldo zero', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef39',
-        playerId: 'player-003',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b3',
         initialBalance: Money.zero('BRL'),
       });
 
@@ -81,7 +84,7 @@ describe('WalletRepository', () => {
     it('deve buscar wallet por ID', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef40',
-        playerId: 'player-004',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b4',
         initialBalance: Money.from({ amount: '500.00', currency: 'BRL' }),
       });
 
@@ -94,7 +97,7 @@ describe('WalletRepository', () => {
     });
 
     it('deve retornar null para wallet inexistente', async () => {
-      const found = await repository.findById('nonexistent-id');
+      const found = await repository.findById('00000000-0000-0000-0000-000000000000');
       expect(found).toBeNull();
     });
   });
@@ -103,20 +106,20 @@ describe('WalletRepository', () => {
     it('deve buscar wallet por playerId e currency', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef41',
-        playerId: 'player-005',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b5',
         initialBalance: Money.from({ amount: '200.00', currency: 'BRL' }),
       });
 
       await repository.save(wallet);
 
-      const found = await repository.findByPlayerAndCurrency('player-005', 'BRL');
+      const found = await repository.findByPlayerAndCurrency('0192f28f-5dc0-7d58-bdb2-814ad6a0f4b5', 'BRL');
       expect(found).toBeDefined();
-      expect(found?.playerId).toBe('player-005');
+      expect(found?.playerId).toBe('0192f28f-5dc0-7d58-bdb2-814ad6a0f4b5');
       expect(found?.currency).toBe('BRL');
     });
 
     it('deve retornar null para combinação inexistente', async () => {
-      const found = await repository.findByPlayerAndCurrency('player-999', 'USD');
+      const found = await repository.findByPlayerAndCurrency('00000000-0000-0000-0000-000000000000', 'USD');
       expect(found).toBeNull();
     });
   });
@@ -125,18 +128,18 @@ describe('WalletRepository', () => {
     it('deve retornar true se wallet existe', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef42',
-        playerId: 'player-006',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b6',
         initialBalance: Money.from({ amount: '100.00', currency: 'BRL' }),
       });
 
       await repository.save(wallet);
 
-      const exists = await repository.exists('player-006', 'BRL');
+      const exists = await repository.exists('0192f28f-5dc0-7d58-bdb2-814ad6a0f4b6', 'BRL');
       expect(exists).toBe(true);
     });
 
     it('deve retornar false se wallet não existe', async () => {
-      const exists = await repository.exists('player-999', 'USD');
+      const exists = await repository.exists('00000000-0000-0000-0000-000000000000', 'USD');
       expect(exists).toBe(false);
     });
   });
@@ -145,7 +148,7 @@ describe('WalletRepository', () => {
     it('deve buscar wallet com lock pessimista', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef43',
-        playerId: 'player-007',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b7',
         initialBalance: Money.from({ amount: '300.00', currency: 'BRL' }),
       });
 
@@ -163,7 +166,7 @@ describe('WalletRepository', () => {
     it('deve retornar null para wallet inexistente com lock', async () => {
       const result = await orm.em.transactional(async (em) => {
         const repo = new WalletRepository(em);
-        return await repo.findByIdForUpdate('nonexistent-id');
+        return await repo.findByIdForUpdate('00000000-0000-0000-0000-000000000000');
       });
 
       expect(result).toBeNull();
@@ -174,7 +177,7 @@ describe('WalletRepository', () => {
     it('deve deletar uma wallet', async () => {
       const wallet = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef44',
-        playerId: 'player-008',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b8',
         initialBalance: Money.from({ amount: '50.00', currency: 'BRL' }),
       });
 
@@ -190,7 +193,7 @@ describe('WalletRepository', () => {
     it('deve preservar todos os campos na conversão', async () => {
       const original = Wallet.open({
         id: '0192f291-27dd-7d3f-8071-5f8685deef45',
-        playerId: 'player-009',
+        playerId: '0192f28f-5dc0-7d58-bdb2-814ad6a0f4b9',
         initialBalance: Money.from({ amount: '999.99', currency: 'BRL' }),
       });
 

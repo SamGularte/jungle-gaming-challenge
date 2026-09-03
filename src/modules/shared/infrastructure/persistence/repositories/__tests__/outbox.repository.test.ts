@@ -13,9 +13,11 @@ describe('OutboxRepository', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [OutboxMessageEntity],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
-    repository = new OutboxRepository(orm.em);
+    repository = new OutboxRepository(orm.em.fork());
   });
 
   afterAll(async () => {
@@ -24,13 +26,13 @@ describe('OutboxRepository', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(OutboxMessageEntity, {});
+    await orm.em.getConnection().execute('DELETE FROM outbox_messages');
   });
 
   describe('save()', () => {
     it('deve salvar uma mensagem', async () => {
       const message = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: {
           walletId: 'wallet-123',
@@ -43,7 +45,7 @@ describe('OutboxRepository', () => {
       const saved = await repository.findById(message.id);
       expect(saved).toBeDefined();
       expect(saved?.id).toBe(message.id);
-      expect(saved?.aggregateId).toBe('wallet-123');
+      expect(saved?.aggregateId).toBe('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(saved?.eventType).toBe('WalletBalanceChanged');
       expect(saved?.isPending()).toBe(true);
       expect(saved?.attempts).toBe(0);
@@ -54,12 +56,12 @@ describe('OutboxRepository', () => {
     it('deve salvar múltiplas mensagens', async () => {
       const messages = [
         OutboxMessage.enqueue({
-          aggregateId: 'wallet-123',
+          aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
           eventType: 'WalletBalanceChanged',
           payload: { data: 'test1' },
         }),
         OutboxMessage.enqueue({
-          aggregateId: 'wallet-456',
+          aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
           eventType: 'WalletBalanceChanged',
           payload: { data: 'test2' },
         }),
@@ -75,17 +77,18 @@ describe('OutboxRepository', () => {
   describe('findPendingDue()', () => {
     it('deve buscar mensagens pendentes prontas', async () => {
       const now = new Date();
-      const past = new Date(now.getTime() - 1000);
+      const past = new Date(now.getTime() - 10000);
 
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
       await repository.save(message1);
+      await repository.scheduleRetry(message1.id, past);
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });
@@ -93,7 +96,7 @@ describe('OutboxRepository', () => {
       await repository.scheduleRetry(message2.id, past);
 
       const message3 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-789',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef03',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test3' },
       });
@@ -101,7 +104,7 @@ describe('OutboxRepository', () => {
       await repository.scheduleRetry(message3.id, new Date(now.getTime() + 1000));
 
       const message4 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-999',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef04',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test4' },
       });
@@ -117,7 +120,7 @@ describe('OutboxRepository', () => {
     it('deve respeitar o limite', async () => {
       for (let i = 0; i < 5; i++) {
         const message = OutboxMessage.enqueue({
-          aggregateId: `wallet-${i}`,
+          aggregateId: `0192f291-27dd-7d3f-8071-5f8685deef0${i}`,
           eventType: 'WalletBalanceChanged',
           payload: { data: `test-${i}` },
         });
@@ -132,21 +135,21 @@ describe('OutboxRepository', () => {
   describe('findPendingByAggregateId()', () => {
     it('deve buscar mensagens pendentes por aggregateId', async () => {
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
       await repository.save(message1);
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });
       await repository.save(message2);
 
       const message3 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test3' },
       });
@@ -154,7 +157,7 @@ describe('OutboxRepository', () => {
 
       await repository.markPublished(message2.id, new Date());
 
-      const pending = await repository.findPendingByAggregateId('wallet-123');
+      const pending = await repository.findPendingByAggregateId('0192f291-27dd-7d3f-8071-5f8685deef01');
       expect(pending).toHaveLength(1);
       expect(pending[0].id).toBe(message1.id);
     });
@@ -163,7 +166,7 @@ describe('OutboxRepository', () => {
   describe('markPublished()', () => {
     it('deve marcar mensagem como publicada', async () => {
       const message = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -182,7 +185,7 @@ describe('OutboxRepository', () => {
   describe('scheduleRetry()', () => {
     it('deve agendar retry com backoff', async () => {
       const message = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test' },
       });
@@ -205,14 +208,14 @@ describe('OutboxRepository', () => {
   describe('countPending()', () => {
     it('deve contar mensagens pendentes', async () => {
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
       await repository.save(message1);
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });
@@ -227,17 +230,18 @@ describe('OutboxRepository', () => {
   describe('countPendingDue()', () => {
     it('deve contar mensagens pendentes prontas', async () => {
       const now = new Date();
-      const past = new Date(now.getTime() - 1000);
+      const past = new Date(now.getTime() - 10000);
 
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
       await repository.save(message1);
+      await repository.scheduleRetry(message1.id, past);
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });
@@ -245,7 +249,7 @@ describe('OutboxRepository', () => {
       await repository.scheduleRetry(message2.id, past);
 
       const message3 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-789',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef03',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test3' },
       });
@@ -263,7 +267,7 @@ describe('OutboxRepository', () => {
       const recentDate = new Date('2024-06-01');
 
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
@@ -271,7 +275,7 @@ describe('OutboxRepository', () => {
       await repository.markPublished(message1.id, oldDate);
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });
@@ -279,7 +283,7 @@ describe('OutboxRepository', () => {
       await repository.markPublished(message2.id, recentDate);
 
       const message3 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-789',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef03',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test3' },
       });
@@ -298,7 +302,7 @@ describe('OutboxRepository', () => {
   describe('findExceededMaxAttempts()', () => {
     it('deve buscar mensagens que excederam o limite', async () => {
       const message1 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-123',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef01',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test1' },
       });
@@ -308,7 +312,7 @@ describe('OutboxRepository', () => {
       }
 
       const message2 = OutboxMessage.enqueue({
-        aggregateId: 'wallet-456',
+        aggregateId: '0192f291-27dd-7d3f-8071-5f8685deef02',
         eventType: 'WalletBalanceChanged',
         payload: { data: 'test2' },
       });

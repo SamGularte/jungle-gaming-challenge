@@ -13,9 +13,11 @@ describe('InboxRepository', () => {
       clientUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jungle_gaming',
       entities: [InboxMessageEntity],
       debug: false,
+      allowGlobalContext: true,
     });
+    await orm.schema.drop();
     await orm.schema.create();
-    repository = new InboxRepository(orm.em);
+    repository = new InboxRepository(orm.em.fork());
   });
 
   afterAll(async () => {
@@ -24,7 +26,7 @@ describe('InboxRepository', () => {
   });
 
   beforeEach(async () => {
-    await orm.em.nativeDelete(InboxMessageEntity, {});
+    await orm.em.getConnection().execute('DELETE FROM inbox_messages');
   });
 
   describe('save()', () => {
@@ -226,9 +228,7 @@ describe('InboxRepository', () => {
     });
 
     it('não deve lançar erro para mensagem inexistente', async () => {
-      await expect(
-        repository.markProcessed('wager-consumer', 'nonexistent', new Date()),
-      ).resolves.not.toThrow();
+      await repository.markProcessed('wager-consumer', 'nonexistent', new Date());
     });
   });
 
@@ -292,7 +292,7 @@ describe('InboxRepository', () => {
 
       expect(deleted).toBe(1);
 
-      const all = await orm.em.find(InboxMessageEntity, {});
+      const all = await orm.em.fork().find(InboxMessageEntity, {});
       expect(all).toHaveLength(2);
     });
 
