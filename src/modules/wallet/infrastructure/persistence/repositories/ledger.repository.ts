@@ -1,21 +1,13 @@
+import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
+import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { WalletLedgerEntry, LedgerDirection } from '../../../domain/aggregates/wallet-ledger-entry';
 import { LedgerEntryEntity } from '../mikro-orm/entities/ledger-entry.entity';
 import { LedgerRepositoryPort } from '../../../domain/repositories/ledger.repository.port';
 
-/**
- * LedgerRepository - Implementação do repositório de Ledger
- *
- * Converte entre Domain (WalletLedgerEntry) e Infrastructure (LedgerEntryEntity)
- *
- * DECISÕES DE DESIGN:
- * 1. O ledger é IMUTÁVEL - apenas inserção
- * 2. Paginação com cursor para consultas grandes
- * 3. Recalcula saldo para reconciliação
- * 4. Usa transações para operações em lote
- */
+@Injectable()
 export class LedgerRepository implements LedgerRepositoryPort {
-  constructor(private readonly em: EntityManager) {}
+  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
 
   // ============================================
   // CONVERSORES

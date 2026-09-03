@@ -1,15 +1,13 @@
+import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
+import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { WagerTransaction } from '../../../domain/aggregates/wager-transaction';
 import { WagerTransactionEntity } from '../mikro-orm/entities/wager-transaction.entity';
 import { WagerTransactionRepositoryPort } from '../../../domain/repositories/wager-transaction.repository.port';
 
-/**
- * WagerTransactionRepository - Implementação do repositório de WagerTransaction
- *
- * Converte entre Domain (WagerTransaction) e Infrastructure (WagerTransactionEntity)
- */
+@Injectable()
 export class WagerTransactionRepository implements WagerTransactionRepositoryPort {
-  constructor(private readonly em: EntityManager) {}
+  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
 
   private toEntity(transaction: WagerTransaction): WagerTransactionEntity {
     return new WagerTransactionEntity({
