@@ -8,6 +8,8 @@ Processa transações de apostas vindas de múltiplos provedores de jogos (casin
 
 ## Como está organizado
 
+![Diagrama de Arquitetura](docs/diagram.png)
+
 A aplicação segue **DDD (Domain-Driven Design)** com **Clean Architecture**. Cada domínio (wallet, wagering, shared) tem suas camadas:
 
 ```
