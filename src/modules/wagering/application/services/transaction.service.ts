@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { WagerTransaction, WagerTransactionKind, WagerTransactionStatus, FailureCode } from '../../domain/aggregates/wager-transaction';
 import { Money } from '../../../wallet/domain/value-objects/money';
 import { WagerTransactionRepository } from '../../infrastructure/persistence/repositories/wager-transaction.repository';
@@ -13,6 +13,8 @@ import { randomUUID, createHash } from 'crypto';
 
 @Injectable()
 export class TransactionService {
+  private readonly logger = new Logger(TransactionService.name);
+
   constructor(
     private readonly transactionRepository: WagerTransactionRepository,
     private readonly walletRepository: WalletRepository,
@@ -42,8 +44,11 @@ export class TransactionService {
     money: { amount: string; currency: string };
     referenceExternalTransactionId?: string;
   }) {
+    this.logger.log(`Processing transaction: kind=${props.kind} provider=${props.providerId} external=${props.externalTransactionId} player=${props.playerId} wallet=${props.walletId}`);
+
     const existing = await this.transactionRepository.findByIdempotencyKey(props.idempotencyKey);
     if (existing) {
+      this.logger.log(`Idempotent replay: transaction ${existing.id} already exists with status ${existing.status}`);
       return {
         transactionId: existing.id,
         status: existing.status,
@@ -54,14 +59,17 @@ export class TransactionService {
 
     const wallet = await this.walletRepository.findById(props.walletId);
     if (!wallet) {
+      this.logger.warn(`Wallet not found: ${props.walletId}`);
       throw new NotFoundException('Wallet not found');
     }
 
     if (wallet.playerId !== props.playerId) {
+      this.logger.warn(`Player ${props.playerId} does not own wallet ${props.walletId}`);
       throw new ConflictException('Player does not own this wallet');
     }
 
     if (wallet.currency !== props.money.currency) {
+      this.logger.warn(`Currency mismatch: wallet=${wallet.currency} transaction=${props.money.currency}`);
       throw new ConflictException('Currency mismatch');
     }
 
@@ -82,12 +90,14 @@ export class TransactionService {
 
     let reference: WagerTransaction | undefined;
     if (transaction.requiresReference()) {
+      this.logger.debug(`Transaction ${transaction.id} requires reference: ${props.referenceExternalTransactionId}`);
       reference = await this.transactionRepository.findByProviderAndExternalId(
         props.providerId,
         props.referenceExternalTransactionId!,
       ) ?? undefined;
 
       if (!reference || reference.status !== WagerTransactionStatus.PROCESSED) {
+        this.logger.log(`Transaction ${transaction.id} marked as PENDING_REFERENCE (ref exists: ${!!reference})`);
         transaction.markPendingReference();
         await this.transactionRepository.save(transaction);
 
@@ -119,6 +129,7 @@ export class TransactionService {
       }
 
       if (!transaction.isValidReference(reference)) {
+        this.logger.warn(`Transaction ${transaction.id} rejected: invalid reference kind`);
         transaction.reject(FailureCode.INVALID_REFERENCE_KIND);
         await this.transactionRepository.save(transaction);
         await this.emitRejectedEvent(transaction);
@@ -130,6 +141,7 @@ export class TransactionService {
       }
 
       if (!transaction.hasSameValueAs(reference)) {
+        this.logger.warn(`Transaction ${transaction.id} rejected: reference value mismatch`);
         transaction.reject(FailureCode.REFERENCE_VALUE_MISMATCH);
         await this.transactionRepository.save(transaction);
         await this.emitRejectedEvent(transaction);
@@ -142,6 +154,7 @@ export class TransactionService {
     }
 
     if (transaction.kind === WagerTransactionKind.LOSS) {
+      this.logger.log(`Transaction ${transaction.id} (LOSS) processed without balance change`);
       transaction.markProcessed(undefined, new Date());
       await this.transactionRepository.save(transaction);
       await this.emitProcessedEvent(transaction);
@@ -158,7 +171,9 @@ export class TransactionService {
     if (direction === 'DEBIT') {
       try {
         entry = wallet.debit(transaction.money, transaction.id);
+        this.logger.log(`Transaction ${transaction.id} debited ${transaction.money.toString()} from wallet ${props.walletId}`);
       } catch {
+        this.logger.warn(`Transaction ${transaction.id} rejected: insufficient balance`);
         transaction.reject(FailureCode.INSUFFICIENT_BALANCE);
         await this.transactionRepository.save(transaction);
         await this.emitRejectedEvent(transaction);
@@ -170,6 +185,7 @@ export class TransactionService {
       }
     } else if (direction === 'CREDIT') {
       entry = wallet.credit(transaction.money, transaction.id);
+      this.logger.log(`Transaction ${transaction.id} credited ${transaction.money.toString()} to wallet ${props.walletId}`);
     }
 
     transaction.markProcessed(reference?.id, new Date());
@@ -181,6 +197,8 @@ export class TransactionService {
     }
 
     await this.emitProcessedEvent(transaction, entry);
+
+    this.logger.log(`Transaction ${transaction.id} processed successfully, new balance: ${wallet.balance.toString()}`);
 
     return {
       transactionId: transaction.id,
@@ -213,6 +231,7 @@ export class TransactionService {
     });
 
     await this.outboxRepository.save(outbox);
+    this.logger.debug(`Processed event enqueued for transaction ${transaction.id}`);
   }
 
   private async emitRejectedEvent(transaction: WagerTransaction) {
@@ -238,22 +257,27 @@ export class TransactionService {
     });
 
     await this.outboxRepository.save(outbox);
+    this.logger.debug(`Rejected event enqueued for transaction ${transaction.id}`);
   }
 
   async findById(id: string) {
+    this.logger.debug(`Finding transaction ${id}`);
     const transaction = await this.transactionRepository.findById(id);
     if (!transaction) {
+      this.logger.warn(`Transaction not found: ${id}`);
       throw new NotFoundException('Transaction not found');
     }
     return transaction;
   }
 
   async findByProviderAndExternalId(providerId: string, externalTransactionId: string) {
+    this.logger.debug(`Finding transaction by provider=${providerId} external=${externalTransactionId}`);
     const transaction = await this.transactionRepository.findByProviderAndExternalId(
       providerId,
       externalTransactionId,
     );
     if (!transaction) {
+      this.logger.warn(`Transaction not found: provider=${providerId} external=${externalTransactionId}`);
       throw new NotFoundException('Transaction not found');
     }
     return transaction;
