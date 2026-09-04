@@ -1,13 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { WalletLedgerEntry, LedgerDirection } from '../../../domain/aggregates/wallet-ledger-entry';
 import { LedgerEntryEntity } from '../mikro-orm/entities/ledger-entry.entity';
 import { LedgerRepositoryPort } from '../../../domain/repositories/ledger.repository.port';
 
 @Injectable()
 export class LedgerRepository implements LedgerRepositoryPort {
-  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   // ============================================
   // CONVERSORES

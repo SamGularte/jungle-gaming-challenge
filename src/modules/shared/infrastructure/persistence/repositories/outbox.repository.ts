@@ -1,13 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { OutboxMessage } from '../../../domain/value-objects/outbox-message';
 import { OutboxMessageEntity } from '../mikro-orm/entities/outbox-message.entity';
 import { OutboxRepositoryPort } from '../../../domain/repositories/outbox.repository.port';
 
 @Injectable()
 export class OutboxRepository implements OutboxRepositoryPort {
-  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   private toEntity(message: OutboxMessage): OutboxMessageEntity {
     return new OutboxMessageEntity({

@@ -1,13 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { InboxMessage } from '../../../domain/value-objects/inbox-message';
 import { InboxMessageEntity } from '../mikro-orm/entities/inbox-message.entity';
 import { InboxRepositoryPort } from '../../../domain/repositories/inbox.repository.port';
 
 @Injectable()
 export class InboxRepository implements InboxRepositoryPort {
-  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   private toEntity(message: InboxMessage): InboxMessageEntity {
     return new InboxMessageEntity({

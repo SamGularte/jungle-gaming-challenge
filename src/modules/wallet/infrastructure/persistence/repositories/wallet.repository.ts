@@ -1,13 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EntityManager, LockMode } from '@mikro-orm/postgresql';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { Wallet } from '../../../domain/aggregates/wallet';
 import { WalletEntity } from '../mikro-orm/entities/wallet.entity';
 import { WalletRepositoryPort } from '../../../domain/repositories/wallet.repository.port';
 
 @Injectable()
 export class WalletRepository implements WalletRepositoryPort {
-  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   private toEntity(wallet: Wallet): WalletEntity {
     return new WalletEntity({

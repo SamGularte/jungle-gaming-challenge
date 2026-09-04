@@ -1,13 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
 import { WagerTransaction } from '../../../domain/aggregates/wager-transaction';
 import { WagerTransactionEntity } from '../mikro-orm/entities/wager-transaction.entity';
 import { WagerTransactionRepositoryPort } from '../../../domain/repositories/wager-transaction.repository.port';
 
 @Injectable()
 export class WagerTransactionRepository implements WagerTransactionRepositoryPort {
-  constructor(@InjectEntityManager('default') private readonly em: EntityManager) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   private toEntity(transaction: WagerTransaction): WagerTransactionEntity {
     return new WagerTransactionEntity({
