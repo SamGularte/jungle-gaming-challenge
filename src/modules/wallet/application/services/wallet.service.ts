@@ -1,58 +1,117 @@
-import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject } from '@nestjs/common';
+import { EntityManager } from '@mikro-orm/postgresql';
+import Decimal from 'decimal.js';
 import { Wallet } from '../../domain/aggregates/wallet';
 import { WalletLedgerEntry, LedgerDirection } from '../../domain/aggregates/wallet-ledger-entry';
 import { Money } from '../../domain/value-objects/money';
 import { WalletRepository } from '../../infrastructure/persistence/repositories/wallet.repository';
 import { LedgerRepository } from '../../infrastructure/persistence/repositories/ledger.repository';
 import { randomUUID } from 'crypto';
+import { WagerTransaction, WagerTransactionKind } from '../../../wagering/domain/aggregates/wager-transaction';
+import { WagerTransactionEntity } from '../../../wagering/infrastructure/persistence/mikro-orm/entities/wager-transaction.entity';
+import { OutboxMessage } from '../../../shared/domain/value-objects/outbox-message';
+import { OutboxMessageEntity } from '../../../shared/infrastructure/persistence/mikro-orm/entities/outbox-message.entity';
+import { StructuredLogger } from '../../../shared/infrastructure/logging/structured-logger';
 
 @Injectable()
 export class WalletService {
-  private readonly logger = new Logger(WalletService.name);
+  private readonly logger = new StructuredLogger(WalletService.name);
 
   constructor(
     private readonly walletRepository: WalletRepository,
     private readonly ledgerRepository: LedgerRepository,
+    @Inject(EntityManager) private readonly em: EntityManager,
   ) {}
 
   async create(playerId: string, initialBalance: { amount: string; currency: string }): Promise<Wallet> {
     this.logger.log(`Creating wallet for player ${playerId} with ${initialBalance.amount} ${initialBalance.currency}`);
     const money = Money.from(initialBalance);
 
-    const existing = await this.walletRepository.findByPlayerAndCurrency(playerId, money.currency);
-    if (existing) {
-      this.logger.warn(`Wallet already exists for player ${playerId} with currency ${money.currency}`);
-      throw new ConflictException('Wallet already exists for this player and currency');
-    }
+    return this.em.transactional(async () => {
+      const existing = await this.walletRepository.findByPlayerAndCurrency(playerId, money.currency);
+      if (existing) {
+        this.logger.warn(`Wallet already exists for player ${playerId} with currency ${money.currency}`);
+        throw new ConflictException('Wallet already exists for this player and currency');
+      }
 
-    const wallet = Wallet.open({
-      id: randomUUID(),
-      playerId,
-      initialBalance: money,
-    });
-
-    await this.walletRepository.save(wallet);
-
-    if (money.isPositive()) {
-      const openingTransactionId = randomUUID();
-      const balanceAfter = wallet.balance.toJSON();
-      const balanceBefore = Money.zero(money.currency).toJSON();
-
-      const entry = WalletLedgerEntry.create({
-        walletId: wallet.id,
-        transactionId: openingTransactionId,
-        direction: LedgerDirection.CREDIT,
-        money: money,
-        balanceBefore: Money.zero(money.currency),
-        balanceAfter: wallet.balance,
+      const wallet = Wallet.open({
+        id: randomUUID(),
+        playerId,
+        initialBalance: money,
       });
 
-      await this.ledgerRepository.save(entry);
-      this.logger.log(`OPENING transaction created for wallet ${wallet.id}, credit ${money.toString()}`);
-    }
+      await this.walletRepository.save(wallet);
 
-    this.logger.log(`Wallet created: ${wallet.id} for player ${playerId}`);
-    return wallet;
+      if (money.isPositive()) {
+        const openingTransactionId = randomUUID();
+
+        const entry = WalletLedgerEntry.create({
+          walletId: wallet.id,
+          transactionId: openingTransactionId,
+          direction: LedgerDirection.CREDIT,
+          money: money,
+          balanceBefore: Money.zero(money.currency),
+          balanceAfter: wallet.balance,
+        });
+
+        await this.ledgerRepository.save(entry);
+
+        const openingTx = WagerTransaction.createOpening({
+          id: openingTransactionId,
+          walletId: wallet.id,
+          playerId,
+          money,
+        });
+
+        const txEntity = new WagerTransactionEntity({
+          id: openingTx.id,
+          providerId: openingTx.providerId,
+          externalTransactionId: openingTx.externalTransactionId,
+          idempotencyKey: openingTx.idempotencyKey,
+          payloadHash: openingTx.payloadHash,
+          walletId: openingTx.walletId,
+          playerId: openingTx.playerId,
+          roundId: openingTx.roundId,
+          gameId: openingTx.gameId,
+          kind: openingTx.kind,
+          amount: openingTx.money.toAmountString(),
+          currency: openingTx.money.currency,
+          status: openingTx.status,
+          processedAt: openingTx.processedAt,
+        });
+        await this.em.persist(txEntity);
+
+        const outboxEvent = OutboxMessage.enqueue({
+          aggregateId: wallet.id,
+          eventType: 'WalletOpened',
+          payload: {
+            walletId: wallet.id,
+            playerId,
+            transactionId: openingTransactionId,
+            amount: money.toAmountString(),
+            currency: money.currency,
+            kind: WagerTransactionKind.OPENING,
+          },
+        });
+
+        const outboxEntity = new OutboxMessageEntity({
+          id: outboxEvent.id,
+          aggregateId: outboxEvent.aggregateId,
+          eventType: outboxEvent.eventType,
+          payload: { ...outboxEvent.payload },
+          occurredAt: outboxEvent.occurredAt,
+          attempts: outboxEvent.attempts,
+          nextAttemptAt: outboxEvent.nextAttemptAt,
+          publishedAt: outboxEvent.publishedAt,
+        });
+        await this.em.persist(outboxEntity);
+
+        this.logger.log(`OPENING transaction + outbox event created for wallet ${wallet.id}`);
+      }
+
+      this.logger.log(`Wallet created: ${wallet.id} for player ${playerId}`);
+      return wallet;
+    });
   }
 
   async findById(id: string): Promise<Wallet> {
@@ -71,7 +130,10 @@ export class WalletService {
     return this.ledgerRepository.findByWalletId(walletId, limit, cursor);
   }
 
-  async reconcile(walletId: string) {
+  async reconcile(walletId: string, body?: {
+    storedBalance?: { amount: string; currency: string };
+    calculatedBalance?: { amount: string; currency: string };
+  }) {
     this.logger.log(`Reconciling wallet ${walletId}`);
     const wallet = await this.findById(walletId);
     const calculated = await this.ledgerRepository.calculateBalance(walletId);
@@ -81,7 +143,7 @@ export class WalletService {
       calculated.amount === stored.amount &&
       calculated.currency === stored.currency;
 
-    const diffAmount = (parseFloat(stored.amount) - parseFloat(calculated.amount)).toFixed(2);
+    const diffAmount = new Decimal(stored.amount).minus(calculated.amount).toFixed(2);
 
     if (!consistent) {
       this.logger.warn(`Wallet ${walletId} inconsistent: stored=${stored.amount} calculated=${calculated.amount} diff=${diffAmount}`);
@@ -89,7 +151,7 @@ export class WalletService {
       this.logger.log(`Wallet ${walletId} consistent, balance: ${stored.amount} ${stored.currency}`);
     }
 
-    return {
+    const result: Record<string, unknown> = {
       walletId,
       storedBalance: stored,
       calculatedBalance: calculated,
@@ -100,5 +162,21 @@ export class WalletService {
       consistent,
       checkedEntries: await this.ledgerRepository.countByWalletId(walletId),
     };
+
+    if (body?.storedBalance && body?.calculatedBalance) {
+      const callerDiff = new Decimal(body.storedBalance.amount).minus(body.calculatedBalance.amount);
+      const callerDiffStr = callerDiff.toFixed(2);
+      result.callerVerification = {
+        callerStoredBalance: body.storedBalance,
+        callerCalculatedBalance: body.calculatedBalance,
+        callerDifference: {
+          amount: callerDiffStr,
+          currency: body.storedBalance.currency,
+        },
+        callerConsistent: callerDiff.isZero() && body.storedBalance.amount === stored.amount,
+      };
+    }
+
+    return result;
   }
 }

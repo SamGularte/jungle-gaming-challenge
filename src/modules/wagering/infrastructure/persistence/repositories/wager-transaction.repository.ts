@@ -27,6 +27,7 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
       referenceTransactionId: transaction.referenceTransactionId,
       failureCode: transaction.failureCode,
       processedAt: transaction.processedAt,
+      pendingReferenceExpiresAt: transaction.pendingReferenceExpiresAt,
     });
   }
 
@@ -52,6 +53,8 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
       referenceTransactionId: entity.referenceTransactionId ?? undefined,
       failureCode: (entity.failureCode as WagerTransaction['failureCode']) ?? undefined,
       processedAt: entity.processedAt ?? undefined,
+      retryCount: (entity as any).retryCount ?? 0,
+      pendingReferenceExpiresAt: (entity as any).pendingReferenceExpiresAt ?? undefined,
     });
   }
 
@@ -63,6 +66,8 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
       managed.processedAt = transaction.processedAt;
       managed.referenceTransactionId = transaction.referenceTransactionId;
       managed.failureCode = transaction.failureCode;
+      (managed as any).retryCount = transaction.retryCount;
+      (managed as any).pendingReferenceExpiresAt = transaction.pendingReferenceExpiresAt;
       await this.em.flush();
     } else {
       await this.em.persist(entity).flush();
@@ -164,7 +169,22 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
   }
 
   async findPendingReferences(limit: number = 100): Promise<WagerTransaction[]> {
-    return this.findByStatus('PENDING_REFERENCE', limit);
+    const now = new Date();
+    const entities = await this.em.find(
+      WagerTransactionEntity,
+      {
+        status: 'PENDING_REFERENCE',
+        $or: [
+          { pendingReferenceExpiresAt: null },
+          { pendingReferenceExpiresAt: { $gt: now } },
+        ],
+      },
+      {
+        orderBy: [{ retryCount: 'ASC' }, { createdAt: 'ASC' }],
+        limit,
+      },
+    );
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findByReferenceTransactionId(referenceTransactionId: string): Promise<WagerTransaction[]> {

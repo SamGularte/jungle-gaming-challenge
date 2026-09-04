@@ -7,6 +7,7 @@ import { InboxRepository } from '../../../shared/infrastructure/persistence/repo
 import { TransactionService } from '../../../wagering/application/services/transaction.service';
 import { Wallet } from '../../../wallet/domain/aggregates/wallet';
 import { Money } from '../../../wallet/domain/value-objects/money';
+import { MetricsService } from '../../../shared/infrastructure/metrics/metrics.service';
 import config from '../../../../shared/database/mikro-orm.config';
 
 export async function setupTestDb() {
@@ -33,11 +34,14 @@ export function createRepositories(orm: MikroORM) {
 export function createTransactionService(orm: MikroORM) {
   const { walletRepository, ledgerRepository, transactionRepository, outboxRepository } =
     createRepositories(orm);
+  const em = orm.em.fork();
   return new TransactionService(
     transactionRepository,
     walletRepository,
     ledgerRepository,
     outboxRepository,
+    em,
+    new MetricsService(),
   );
 }
 
@@ -64,4 +68,22 @@ export async function cleanupTestDb(orm: MikroORM) {
   await em.execute('DELETE FROM wager_transactions');
   await em.execute('DELETE FROM ledger_entries');
   await em.execute('DELETE FROM wallets');
+}
+
+export async function assertWalletBalanceEqualsLedger(orm: MikroORM, walletId: string) {
+  const em = orm.em.fork();
+  const walletRepo = new WalletRepository(em);
+  const ledgerRepo = new LedgerRepository(em);
+
+  const wallet = await walletRepo.findById(walletId);
+  if (!wallet) throw new Error(`Wallet ${walletId} not found`);
+
+  const calculated = await ledgerRepo.calculateBalance(walletId);
+  const stored = wallet.balance.toJSON();
+
+  if (stored.amount !== calculated.amount || stored.currency !== calculated.currency) {
+    throw new Error(
+      `Invariant violated: wallet.balance (${stored.amount} ${stored.currency}) != ledger balance (${calculated.amount} ${calculated.currency})`,
+    );
+  }
 }

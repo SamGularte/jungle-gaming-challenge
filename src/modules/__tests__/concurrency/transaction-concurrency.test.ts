@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { MikroORM } from '@mikro-orm/postgresql';
-import { setupTestDb, createTestWallet, cleanupTestDb } from './helpers/test-setup';
+import { setupTestDb, createTestWallet, cleanupTestDb, assertWalletBalanceEqualsLedger } from './helpers/test-setup';
 import { WalletRepository } from '../../wallet/infrastructure/persistence/repositories/wallet.repository';
 import { LedgerRepository } from '../../wallet/infrastructure/persistence/repositories/ledger.repository';
 import { WagerTransactionRepository } from '../../wagering/infrastructure/persistence/repositories/wager-transaction.repository';
 import { OutboxRepository } from '../../shared/infrastructure/persistence/repositories/outbox.repository';
 import { TransactionService } from '../../wagering/application/services/transaction.service';
 import { WagerTransactionStatus } from '../../wagering/domain/aggregates/wager-transaction';
+import { MetricsService } from '../../shared/infrastructure/metrics/metrics.service';
 
 function createService(orm: MikroORM) {
   const em = orm.em.fork();
@@ -15,6 +16,8 @@ function createService(orm: MikroORM) {
     new WalletRepository(em),
     new LedgerRepository(em),
     new OutboxRepository(em),
+    em,
+    new MetricsService(),
   );
 }
 
@@ -88,6 +91,8 @@ describe('Concorrência - Transações', () => {
     expect(entries.entries).toHaveLength(1);
     expect(entries.entries[0].direction).toBe('DEBIT');
     expect(entries.entries[0].money.toJSON()).toEqual({ amount: '80.00', currency: 'BRL' });
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('mesma aposta enviada 50 vezes em paralelo → um único débito', async () => {
@@ -127,6 +132,8 @@ describe('Concorrência - Transações', () => {
     const finalWallet = await walletRepo.findById(wallet.id);
     expect(finalWallet?.balance.toJSON()).toEqual({ amount: '990.00', currency: 'BRL' });
     expect(finalWallet?.version).toBe(2);
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('múltiplas apostas concorrentes disputando o mesmo saldo', async () => {
@@ -171,6 +178,8 @@ describe('Concorrência - Transações', () => {
       expect(entry.isBalanced()).toBe(true);
       expect(entry.direction).toBe('DEBIT');
     }
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('wallets distintas processadas em paralelo', async () => {
@@ -211,6 +220,7 @@ describe('Concorrência - Transações', () => {
       const finalWallet = await walletRepo.findById(w.id);
       expect(finalWallet?.balance.toJSON()).toEqual({ amount: '75.00', currency: 'BRL' });
       expect(finalWallet?.version).toBe(2);
+      await assertWalletBalanceEqualsLedger(orm, w.id);
     }
   });
 });

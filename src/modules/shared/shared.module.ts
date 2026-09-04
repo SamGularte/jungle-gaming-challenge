@@ -6,10 +6,11 @@ import { OutboxMessageEntity } from './infrastructure/persistence/mikro-orm/enti
 import { InboxMessageEntity } from './infrastructure/persistence/mikro-orm/entities/inbox-message.entity';
 import { OutboxPublisher } from './infrastructure/workers/outbox-publisher';
 import { SqsConsumer } from './infrastructure/workers/sqs-consumer';
+import { MetricsService } from './infrastructure/metrics/metrics.service';
 
 @Module({
   imports: [MikroOrmModule.forFeature([OutboxMessageEntity, InboxMessageEntity])],
-  providers: [OutboxRepository, InboxRepository, OutboxPublisher, SqsConsumer],
-  exports: [OutboxRepository, InboxRepository, OutboxPublisher, SqsConsumer],
+  providers: [OutboxRepository, InboxRepository, OutboxPublisher, SqsConsumer, MetricsService],
+  exports: [OutboxRepository, InboxRepository, OutboxPublisher, SqsConsumer, MetricsService],
 })
 export class SharedModule {}

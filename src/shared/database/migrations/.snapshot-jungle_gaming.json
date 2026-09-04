@@ -348,6 +348,12 @@
       ],
       "checks": [
         {
+          "name": "ledger_arithmetic_check",
+          "expression": "((direction = 'DEBIT'::text) AND ((balance_before - amount) = balance_after)) OR ((direction = 'CREDIT'::text) AND ((balance_before + amount) = balance_after))",
+          "definition": "CHECK (((((direction)::text = 'DEBIT'::text) AND ((balance_before - amount) = balance_after)) OR (((direction)::text = 'CREDIT'::text) AND ((balance_before + amount) = balance_after))))",
+          "columnName": "amount"
+        },
+        {
           "name": "ledger_entries_currency_check",
           "expression": "\"currency\" in ('BRL', 'USD', 'EUR')",
           "definition": "check (\"currency\" in ('BRL', 'USD', 'EUR'))",
@@ -756,6 +762,7 @@
             "WIN",
             "LOSS",
             "REFUND",
+            "REVERSAL",
             "ROLLBACK"
           ],
           "mappedType": "enum"
@@ -862,6 +869,23 @@
           "enumItems": [],
           "mappedType": "uuid"
         },
+        "retry_count": {
+          "name": "retry_count",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "0",
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
         "round_id": {
           "name": "round_id",
           "type": "varchar(255)",
@@ -963,6 +987,16 @@
         },
         {
           "columnNames": [
+            "retry_count"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_wager_transactions_retry_count",
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": [
             "status"
           ],
           "composite": false,
@@ -1015,6 +1049,12 @@
       ],
       "checks": [
         {
+          "name": "kind_check",
+          "expression": "\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK', 'REVERSAL')",
+          "definition": "check (\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK', 'REVERSAL'))",
+          "columnName": "kind"
+        },
+        {
           "name": "wager_transactions_currency_check",
           "expression": "\"currency\" in ('BRL', 'USD', 'EUR')",
           "definition": "check (\"currency\" in ('BRL', 'USD', 'EUR'))",
@@ -1022,8 +1062,8 @@
         },
         {
           "name": "wager_transactions_kind_check",
-          "expression": "\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK')",
-          "definition": "check (\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK'))",
+          "expression": "\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'REVERSAL', 'ROLLBACK')",
+          "definition": "check (\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'REVERSAL', 'ROLLBACK'))",
           "columnName": "kind"
         },
         {

@@ -6,6 +6,7 @@ import { WageringModule } from './modules/wagering/wagering.module';
 import { SharedModule } from './modules/shared/shared.module';
 import { OutboxPublisherWorker } from './workers/outbox-publisher.worker';
 import { SqsConsumerWorker } from './workers/sqs-consumer.worker';
+import { PendingReferenceWorker } from './workers/pending-reference.worker';
 import config from './shared/database/mikro-orm.config';
 
 @Module({
@@ -16,6 +17,6 @@ import config from './shared/database/mikro-orm.config';
     WageringModule,
     SharedModule,
   ],
-  providers: [OutboxPublisherWorker, SqsConsumerWorker],
+  providers: [OutboxPublisherWorker, SqsConsumerWorker, PendingReferenceWorker],
 })
 export class AppModule {}

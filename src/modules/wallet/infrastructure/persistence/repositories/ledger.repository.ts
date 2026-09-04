@@ -3,6 +3,7 @@ import { EntityManager } from '@mikro-orm/postgresql';
 import { WalletLedgerEntry, LedgerDirection } from '../../../domain/aggregates/wallet-ledger-entry';
 import { LedgerEntryEntity } from '../mikro-orm/entities/ledger-entry.entity';
 import { LedgerRepositoryPort } from '../../../domain/repositories/ledger.repository.port';
+import { WalletEntity } from '../mikro-orm/entities/wallet.entity';
 
 @Injectable()
 export class LedgerRepository implements LedgerRepositoryPort {
@@ -72,8 +73,6 @@ export class LedgerRepository implements LedgerRepositoryPort {
     limit: number = 50,
     cursor?: string,
   ): Promise<{ entries: WalletLedgerEntry[]; nextCursor?: string }> {
-    const query = { walletId };
-
     let entities: LedgerEntryEntity[];
 
     if (cursor) {
@@ -82,20 +81,23 @@ export class LedgerRepository implements LedgerRepositoryPort {
         entities = await this.em.find(
           LedgerEntryEntity,
           {
-            ...query,
-            createdAt: { $lt: cursorEntity.createdAt },
+            walletId,
+            $or: [
+              { createdAt: { $lt: cursorEntity.createdAt } },
+              { createdAt: cursorEntity.createdAt, id: { $lt: cursor } },
+            ],
           },
           {
-            orderBy: { createdAt: 'DESC' },
+            orderBy: [{ createdAt: 'DESC' }, { id: 'DESC' }],
             limit: limit + 1,
           },
         );
       } else {
         entities = await this.em.find(
           LedgerEntryEntity,
-          query,
+          { walletId },
           {
-            orderBy: { createdAt: 'DESC' },
+            orderBy: [{ createdAt: 'DESC' }, { id: 'DESC' }],
             limit: limit + 1,
           },
         );
@@ -103,9 +105,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
     } else {
       entities = await this.em.find(
         LedgerEntryEntity,
-        query,
+        { walletId },
         {
-          orderBy: { createdAt: 'DESC' },
+          orderBy: [{ createdAt: 'DESC' }, { id: 'DESC' }],
           limit: limit + 1,
         },
       );
@@ -144,7 +146,8 @@ export class LedgerRepository implements LedgerRepositoryPort {
     );
 
     if (entries.length === 0) {
-      return { amount: '0.00', currency: 'BRL' };
+      const wallet = await this.em.findOne(WalletEntity, { id: walletId });
+      return { amount: '0.00', currency: wallet?.currency ?? 'BRL' };
     }
 
     const lastEntry = entries[entries.length - 1];

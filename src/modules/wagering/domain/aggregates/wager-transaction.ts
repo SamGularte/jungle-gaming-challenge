@@ -67,6 +67,8 @@ export interface WagerTransactionState {
   referenceTransactionId?: string;
   failureCode?: FailureCode;
   processedAt?: Date;
+  retryCount?: number;
+  pendingReferenceExpiresAt?: Date;
 }
 
 export class WagerTransaction {
@@ -74,6 +76,8 @@ export class WagerTransaction {
   private _referenceTransactionId?: string;
   private _failureCode?: FailureCode;
   private _processedAt?: Date;
+  private _retryCount: number;
+  private _pendingReferenceExpiresAt?: Date;
 
   private constructor(
     public readonly id: string,
@@ -93,11 +97,44 @@ export class WagerTransaction {
     referenceTransactionId?: string,
     failureCode?: FailureCode,
     processedAt?: Date,
+    retryCount: number = 0,
+    pendingReferenceExpiresAt?: Date,
   ) {
     this._status = status;
     this._referenceTransactionId = referenceTransactionId;
     this._failureCode = failureCode;
     this._processedAt = processedAt;
+    this._retryCount = retryCount;
+    this._pendingReferenceExpiresAt = pendingReferenceExpiresAt;
+  }
+
+  static createOpening(props: {
+    id: string;
+    walletId: string;
+    playerId: string;
+    money: Money;
+  }): WagerTransaction {
+    const txId = props.id;
+    return new WagerTransaction(
+      txId,
+      'SYSTEM',
+      `OPENING-${txId}`,
+      `opening:${props.walletId}`,
+      `opening:${props.walletId}:${props.money.toAmountString()}:${props.money.currency}`,
+      props.walletId,
+      props.playerId,
+      `round-${txId}`,
+      'SYSTEM',
+      WagerTransactionKind.OPENING,
+      props.money,
+      undefined,
+      new Date(),
+      WagerTransactionStatus.PROCESSED,
+      undefined,
+      undefined,
+      new Date(),
+      0,
+    );
   }
 
   static create(props: {
@@ -206,11 +243,17 @@ export class WagerTransaction {
       state.referenceTransactionId,
       state.failureCode,
       state.processedAt,
+      state.retryCount ?? 0,
+      state.pendingReferenceExpiresAt,
     );
   }
 
   get status(): WagerTransactionStatus {
     return this._status;
+  }
+
+  get pendingReferenceExpiresAt(): Date | undefined {
+    return this._pendingReferenceExpiresAt;
   }
 
   get referenceTransactionId(): string | undefined {
@@ -223,6 +266,10 @@ export class WagerTransaction {
 
   get processedAt(): Date | undefined {
     return this._processedAt;
+  }
+
+  get retryCount(): number {
+    return this._retryCount;
   }
 
   markProcessed(referenceTransactionId: string | undefined, at: Date): void {
@@ -243,6 +290,13 @@ export class WagerTransaction {
     this._processedAt = at;
   }
 
+  /**
+   * Transitions to PENDING_REFERENCE. Sets an initial TTL of 1 hour.
+   * The TTL is extended on each retry via incrementRetry().
+   *
+   * Valid transitions:
+   * PENDING -> PENDING_REFERENCE
+   */
   markPendingReference(): void {
     if (this.isTerminal()) {
       throw new InvalidTransactionStateError(
@@ -257,6 +311,7 @@ export class WagerTransaction {
     }
 
     this._status = WagerTransactionStatus.PENDING_REFERENCE;
+    this._pendingReferenceExpiresAt = new Date(Date.now() + 3600_000);
   }
 
   reject(code: FailureCode): void {
@@ -368,6 +423,18 @@ export class WagerTransaction {
       return false;
     }
 
+    if (this.providerId !== reference.providerId) {
+      return false;
+    }
+
+    if (this.roundId !== reference.roundId) {
+      return false;
+    }
+
+    if (this.money.currency !== reference.money.currency) {
+      return false;
+    }
+
     if (!this.money.equals(reference.money)) {
       return false;
     }
@@ -387,6 +454,19 @@ export class WagerTransaction {
     return false;
   }
 
+  /** Checks if the reference kind is valid, separate from value check. */
+  isValidReferenceKind(reference: WagerTransaction): boolean {
+    if (!this.requiresReference()) return false;
+    if (reference.status !== WagerTransactionStatus.PROCESSED) return false;
+    if (this.kind === WagerTransactionKind.REFUND) {
+      return reference.kind === WagerTransactionKind.BET;
+    }
+    if (this.kind === WagerTransactionKind.ROLLBACK) {
+      return [WagerTransactionKind.BET, WagerTransactionKind.WIN, WagerTransactionKind.REFUND].includes(reference.kind);
+    }
+    return false;
+  }
+
   hasSameValueAs(reference: WagerTransaction): boolean {
     return this.money.equals(reference.money);
   }
@@ -398,8 +478,24 @@ export class WagerTransaction {
     ].includes(this.kind);
   }
 
-  hasExceededMaxRetries(maxRetries: number = 5): boolean {
-    return this._status === WagerTransactionStatus.PENDING_REFERENCE;
+  /**
+   * Increments retry count and extends TTL with exponential backoff.
+   * Base delay: 1s, max delay: 5min.
+   * Max retries: 10 (justified: ~17 minutes total window before giving up).
+   * A transaction that hasn't been resolved after 10 attempts over ~17 minutes
+   * likely indicates the reference will never arrive.
+   */
+  incrementRetry(): void {
+    this._retryCount += 1;
+    const baseDelayMs = 1000;
+    const maxDelayMs = 300_000;
+    const delayMs = Math.min(baseDelayMs * Math.pow(2, this._retryCount), maxDelayMs);
+    this._pendingReferenceExpiresAt = new Date(Date.now() + delayMs);
+  }
+
+  /** Max retries: 10. Justified: ~17 min total window with exponential backoff. */
+  hasExceededMaxRetries(maxRetries: number = 10): boolean {
+    return this._retryCount >= maxRetries;
   }
 
   toJSON(): {
@@ -420,6 +516,7 @@ export class WagerTransaction {
     referenceTransactionId?: string;
     failureCode?: FailureCode;
     processedAt?: string;
+    retryCount: number;
   } {
     return {
       id: this.id,
@@ -439,6 +536,7 @@ export class WagerTransaction {
       referenceTransactionId: this._referenceTransactionId,
       failureCode: this._failureCode,
       processedAt: this._processedAt?.toISOString(),
+      retryCount: this._retryCount,
     };
   }
 

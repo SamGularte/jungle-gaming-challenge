@@ -7,6 +7,8 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  app.enableShutdownHooks();
+
   const port = process.env.APP_PORT || 3000;
   logger.log(`Starting application on port ${port}`);
 

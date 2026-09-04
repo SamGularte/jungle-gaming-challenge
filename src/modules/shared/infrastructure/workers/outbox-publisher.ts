@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { EntityManager, RequestContext } from '@mikro-orm/postgresql';
 import { OutboxRepository } from '../persistence/repositories/outbox.repository';
 import { OutboxMessage } from '../../domain/value-objects/outbox-message';
+import { MetricsService } from '../metrics/metrics.service';
 
 export interface EventPublisher {
   publish(eventType: string, payload: Record<string, unknown>): Promise<void>;
@@ -16,6 +17,7 @@ export class OutboxPublisher implements OnModuleDestroy {
   constructor(
     private readonly outboxRepository: OutboxRepository,
     @Inject(EntityManager) private readonly em: EntityManager,
+    private readonly metrics: MetricsService,
   ) {}
 
   start(publisher: EventPublisher, intervalMs: number = 1000): void {
@@ -57,15 +59,18 @@ export class OutboxPublisher implements OnModuleDestroy {
           message.markPublished(new Date());
           await this.outboxRepository.save(message);
           published++;
+          this.metrics.outboxPublished(message.eventType);
           this.logger.debug(`Published event: ${message.eventType} (${message.id})`);
         } catch (error) {
           this.logger.warn(`Failed to publish event ${message.id}: ${error}`);
+          this.metrics.outboxFailed(message.eventType);
           message.scheduleRetry(new Date());
 
           if (message.hasExceededMaxAttempts()) {
             this.logger.error(`Event ${message.id} exceeded max attempts, marking as failed`);
           }
 
+          this.metrics.outboxLag(message.attempts);
           await this.outboxRepository.save(message);
         }
       }

@@ -29,9 +29,10 @@ export class WalletController {
     @Query('cursor') cursor?: string,
   ) {
     this.logger.log(`GET /wallets/${walletId}/ledger - limit: ${limit}, cursor: ${cursor}`);
+    const parsedLimit = limit ? Math.min(parseInt(limit) || 50, 50) : 50;
     const result = await this.walletService.getLedger(
       walletId,
-      limit ? parseInt(limit) : 50,
+      parsedLimit,
       cursor,
     );
     return {
@@ -52,8 +53,14 @@ export class WalletController {
 
   @Post(':walletId/reconciliation')
   @HttpCode(HttpStatus.OK)
-  async reconcile(@Param('walletId', ParseUUIDPipe) walletId: string) {
+  async reconcile(
+    @Param('walletId', ParseUUIDPipe) walletId: string,
+    @Body() body?: {
+      storedBalance?: { amount: string; currency: string };
+      calculatedBalance?: { amount: string; currency: string };
+    },
+  ) {
     this.logger.log(`POST /wallets/${walletId}/reconciliation`);
-    return this.walletService.reconcile(walletId);
+    return this.walletService.reconcile(walletId, body);
   }
 }

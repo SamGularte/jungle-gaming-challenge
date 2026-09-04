@@ -38,6 +38,8 @@ const WagerTransactionEntitySchema = defineEntity({
     referenceTransactionId: () => p.uuid().nullable(),
     failureCode: () => p.string().nullable(),
     processedAt: () => p.datetime().nullable(),
+    retryCount: () => p.integer().default(0),
+    pendingReferenceExpiresAt: () => p.datetime().nullable(),
   },
   uniques: [
     { properties: ['providerId', 'externalTransactionId'] },
@@ -66,6 +68,8 @@ export class WagerTransactionEntity extends WagerTransactionEntitySchema.class {
     referenceTransactionId?: string;
     failureCode?: string;
     processedAt?: Date;
+    retryCount?: number;
+    pendingReferenceExpiresAt?: Date;
   }) {
     super();
     this.id = props.id;
@@ -86,6 +90,8 @@ export class WagerTransactionEntity extends WagerTransactionEntitySchema.class {
     this.referenceTransactionId = props.referenceTransactionId;
     this.failureCode = props.failureCode;
     this.processedAt = props.processedAt;
+    this.retryCount = props.retryCount ?? 0;
+    this.pendingReferenceExpiresAt = props.pendingReferenceExpiresAt;
   }
 
   updateStatus(newStatus: string): void {

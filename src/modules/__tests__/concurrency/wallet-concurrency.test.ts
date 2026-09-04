@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { MikroORM } from '@mikro-orm/postgresql';
-import { setupTestDb, createTestWallet, cleanupTestDb } from './helpers/test-setup';
+import { setupTestDb, createTestWallet, cleanupTestDb, assertWalletBalanceEqualsLedger } from './helpers/test-setup';
 import { WalletRepository } from '../../wallet/infrastructure/persistence/repositories/wallet.repository';
 import { LedgerRepository } from '../../wallet/infrastructure/persistence/repositories/ledger.repository';
 import { WagerTransactionRepository } from '../../wagering/infrastructure/persistence/repositories/wager-transaction.repository';
 import { OutboxRepository } from '../../shared/infrastructure/persistence/repositories/outbox.repository';
 import { TransactionService } from '../../wagering/application/services/transaction.service';
+import { MetricsService } from '../../shared/infrastructure/metrics/metrics.service';
 
 function createService(orm: MikroORM) {
   const em = orm.em.fork();
@@ -14,6 +15,8 @@ function createService(orm: MikroORM) {
     new WalletRepository(em),
     new LedgerRepository(em),
     new OutboxRepository(em),
+    em,
+    new MetricsService(),
   );
 }
 
@@ -81,6 +84,8 @@ describe('Concorrência - Wallet', () => {
       0,
     );
     expect(totalDebited).toBe(processed.length * 80);
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('operações de débito e crédito concorrentes na mesma wallet', async () => {
@@ -121,6 +126,8 @@ describe('Concorrência - Wallet', () => {
     for (const entry of entries.entries) {
       expect(entry.isBalanced()).toBe(true);
     }
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('wallets distintas processadas em paralelo (20 wallets)', async () => {
@@ -160,6 +167,7 @@ describe('Concorrência - Wallet', () => {
     for (const w of wallets) {
       const finalWallet = await walletRepo.findById(w.id);
       expect(finalWallet?.balance.toJSON()).toEqual({ amount: '400.00', currency: 'BRL' });
+      await assertWalletBalanceEqualsLedger(orm, w.id);
     }
   });
 });

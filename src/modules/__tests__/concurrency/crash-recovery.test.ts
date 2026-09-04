@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { MikroORM } from '@mikro-orm/postgresql';
-import { setupTestDb, createTestWallet, createTransactionService, cleanupTestDb } from './helpers/test-setup';
+import { setupTestDb, createTestWallet, createTransactionService, cleanupTestDb, assertWalletBalanceEqualsLedger } from './helpers/test-setup';
 import { WalletRepository } from '../../wallet/infrastructure/persistence/repositories/wallet.repository';
 import { LedgerRepository } from '../../wallet/infrastructure/persistence/repositories/ledger.repository';
 import { WagerTransactionRepository } from '../../wagering/infrastructure/persistence/repositories/wager-transaction.repository';
@@ -62,6 +62,8 @@ describe('Crash Recovery', () => {
     }, 1000);
 
     expect(ledgerBalance).toBe(walletBalance);
+
+    await assertWalletBalanceEqualsLedger(orm, wallet.id);
   });
 
   it('worker morre depois do commit e antes do ack - mensagem é reprocessada', async () => {
