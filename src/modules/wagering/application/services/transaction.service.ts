@@ -58,123 +58,94 @@ export class TransactionService {
     money: { amount: string; currency: string };
     referenceExternalTransactionId?: string;
   }) {
-    this.logger.log(`Processing transaction: kind=${props.kind} provider=${props.providerId} external=${props.externalTransactionId} player=${props.playerId} wallet=${props.walletId}`);
+    return this.em.transactional(async () => {
+      this.logger.log(`Processing transaction: kind=${props.kind} provider=${props.providerId} external=${props.externalTransactionId} player=${props.playerId} wallet=${props.walletId}`);
 
-    const existing = await this.transactionRepository.findByIdempotencyKey(props.idempotencyKey);
-    if (existing) {
-      this.logger.log(`Idempotent replay: transaction ${existing.id} already exists with status ${existing.status}`);
-      return {
-        transactionId: existing.id,
-        status: existing.status,
-        balance: existing.affectsBalance() ? await this.getBalance(existing.walletId) : undefined,
-        idempotentReplay: true,
-      };
-    }
-
-    const wallet = await this.walletRepository.findByIdForUpdate(props.walletId);
-    if (!wallet) {
-      this.logger.warn(`Wallet not found: ${props.walletId}`);
-      throw new NotFoundException('Wallet not found');
-    }
-
-    if (wallet.playerId !== props.playerId) {
-      this.logger.warn(`Player ${props.playerId} does not own wallet ${props.walletId}`);
-      throw new ConflictException('Player does not own this wallet');
-    }
-
-    if (wallet.currency !== props.money.currency) {
-      this.logger.warn(`Currency mismatch: wallet=${wallet.currency} transaction=${props.money.currency}`);
-      throw new ConflictException('Currency mismatch');
-    }
-
-    const transaction = WagerTransaction.create({
-      id: randomUUID(),
-      providerId: props.providerId,
-      externalTransactionId: props.externalTransactionId,
-      idempotencyKey: props.idempotencyKey,
-      payloadHash: this.hashPayload(props),
-      walletId: props.walletId,
-      playerId: props.playerId,
-      roundId: props.roundId,
-      gameId: props.gameId,
-      kind: props.kind as WagerTransactionKind,
-      money: Money.from(props.money),
-      referenceExternalTransactionId: props.referenceExternalTransactionId,
-    });
-
-    let reference: WagerTransaction | undefined;
-    if (transaction.requiresReference()) {
-      this.logger.debug(`Transaction ${transaction.id} requires reference: ${props.referenceExternalTransactionId}`);
-      reference = await this.transactionRepository.findByProviderAndExternalId(
-        props.providerId,
-        props.referenceExternalTransactionId!,
-      ) ?? undefined;
-
-      if (!reference || reference.status !== WagerTransactionStatus.PROCESSED) {
-        this.logger.log(`Transaction ${transaction.id} marked as PENDING_REFERENCE (ref exists: ${!!reference})`);
-        transaction.markPendingReference();
-        await this.transactionRepository.save(transaction);
-
-        const event = WagerTransactionPendingReferenceEvent.from({
-          transactionId: transaction.id,
-          providerId: transaction.providerId,
-          externalTransactionId: transaction.externalTransactionId,
-          walletId: transaction.walletId,
-          playerId: transaction.playerId,
-          roundId: transaction.roundId,
-          gameId: transaction.gameId,
-          kind: transaction.kind,
-          money: transaction.money.toJSON(),
-          referenceExternalTransactionId: transaction.referenceExternalTransactionId!,
-          correlationId: randomUUID(),
-        });
-
-        const outbox = OutboxMessage.enqueue({
-          aggregateId: event.aggregateId,
-          eventType: event.eventType,
-          payload: event.toJSON(),
-        });
-        await this.outboxRepository.save(outbox);
-
+      const existing = await this.transactionRepository.findByIdempotencyKey(props.idempotencyKey);
+      if (existing) {
+        this.logger.log(`Idempotent replay: transaction ${existing.id} already exists with status ${existing.status}`);
         return {
-          transactionId: transaction.id,
-          status: transaction.status,
+          transactionId: existing.id,
+          status: existing.status,
+          balance: existing.affectsBalance() ? await this.getBalance(existing.walletId) : undefined,
+          idempotentReplay: true,
         };
       }
 
-      if (!transaction.isValidReference(reference)) {
-        this.logger.warn(`Transaction ${transaction.id} rejected: invalid reference`);
-        transaction.reject(FailureCode.INVALID_REFERENCE_KIND);
-        await this.transactionRepository.save(transaction);
-        await this.emitRejectedEvent(transaction);
-        return {
-          transactionId: transaction.id,
-          status: transaction.status,
-          failureCode: transaction.failureCode,
-        };
+      const wallet = await this.walletRepository.findByIdForUpdate(props.walletId);
+      if (!wallet) {
+        this.logger.warn(`Wallet not found: ${props.walletId}`);
+        throw new NotFoundException('Wallet not found');
       }
 
-      if (!transaction.hasSameValueAs(reference)) {
-        this.logger.warn(`Transaction ${transaction.id} rejected: reference value mismatch`);
-        transaction.reject(FailureCode.REFERENCE_VALUE_MISMATCH);
-        await this.transactionRepository.save(transaction);
-        await this.emitRejectedEvent(transaction);
-        return {
-          transactionId: transaction.id,
-          status: transaction.status,
-          failureCode: transaction.failureCode,
-        };
+      if (wallet.playerId !== props.playerId) {
+        this.logger.warn(`Player ${props.playerId} does not own wallet ${props.walletId}`);
+        throw new ConflictException('Player does not own this wallet');
       }
 
-      if (transaction.isReversal()) {
-        const existingReversal = await this.findExistingReversal(
-          reference.id,
-          transaction.kind,
-          transaction.walletId,
-        );
-        if (existingReversal) {
-          this.logger.warn(`Transaction ${transaction.id} rejected: reference already reversed by ${existingReversal.id}`);
-          transaction.reject(FailureCode.REFERENCE_ALREADY_REVERSED);
+      if (wallet.currency !== props.money.currency) {
+        this.logger.warn(`Currency mismatch: wallet=${wallet.currency} transaction=${props.money.currency}`);
+        throw new ConflictException('Currency mismatch');
+      }
+
+      const transaction = WagerTransaction.create({
+        id: randomUUID(),
+        providerId: props.providerId,
+        externalTransactionId: props.externalTransactionId,
+        idempotencyKey: props.idempotencyKey,
+        payloadHash: this.hashPayload(props),
+        walletId: props.walletId,
+        playerId: props.playerId,
+        roundId: props.roundId,
+        gameId: props.gameId,
+        kind: props.kind as WagerTransactionKind,
+        money: Money.from(props.money),
+        referenceExternalTransactionId: props.referenceExternalTransactionId,
+      });
+
+      let reference: WagerTransaction | undefined;
+      if (transaction.requiresReference()) {
+        this.logger.debug(`Transaction ${transaction.id} requires reference: ${props.referenceExternalTransactionId}`);
+        reference = await this.transactionRepository.findByProviderAndExternalId(
+          props.providerId,
+          props.referenceExternalTransactionId!,
+        ) ?? undefined;
+
+        if (!reference || reference.status !== WagerTransactionStatus.PROCESSED) {
+          this.logger.log(`Transaction ${transaction.id} marked as PENDING_REFERENCE (ref exists: ${!!reference})`);
+          transaction.markPendingReference();
+          await this.transactionRepository.save(transaction);
+
+          const event = WagerTransactionPendingReferenceEvent.from({
+            transactionId: transaction.id,
+            providerId: transaction.providerId,
+            externalTransactionId: transaction.externalTransactionId,
+            walletId: transaction.walletId,
+            playerId: transaction.playerId,
+            roundId: transaction.roundId,
+            gameId: transaction.gameId,
+            kind: transaction.kind,
+            money: transaction.money.toJSON(),
+            referenceExternalTransactionId: transaction.referenceExternalTransactionId!,
+            correlationId: randomUUID(),
+          });
+
+          const outbox = OutboxMessage.enqueue({
+            aggregateId: event.aggregateId,
+            eventType: event.eventType,
+            payload: event.toJSON(),
+          });
+          await this.outboxRepository.save(outbox);
+
+          return {
+            transactionId: transaction.id,
+            status: transaction.status,
+          };
+        }
+
+        if (!transaction.isValidReference(reference)) {
+          this.logger.warn(`Transaction ${transaction.id} rejected: invalid reference`);
+          transaction.reject(FailureCode.INVALID_REFERENCE_KIND);
           await this.transactionRepository.save(transaction);
           await this.emitRejectedEvent(transaction);
           return {
@@ -183,68 +154,99 @@ export class TransactionService {
             failureCode: transaction.failureCode,
           };
         }
+
+        if (!transaction.hasSameValueAs(reference)) {
+          this.logger.warn(`Transaction ${transaction.id} rejected: reference value mismatch`);
+          transaction.reject(FailureCode.REFERENCE_VALUE_MISMATCH);
+          await this.transactionRepository.save(transaction);
+          await this.emitRejectedEvent(transaction);
+          return {
+            transactionId: transaction.id,
+            status: transaction.status,
+            failureCode: transaction.failureCode,
+          };
+        }
+
+        if (transaction.isReversal()) {
+          const existingReversal = await this.findExistingReversal(
+            reference.id,
+            transaction.kind,
+            transaction.walletId,
+          );
+          if (existingReversal) {
+            this.logger.warn(`Transaction ${transaction.id} rejected: reference already reversed by ${existingReversal.id}`);
+            transaction.reject(FailureCode.REFERENCE_ALREADY_REVERSED);
+            await this.transactionRepository.save(transaction);
+            await this.emitRejectedEvent(transaction);
+            return {
+              transactionId: transaction.id,
+              status: transaction.status,
+              failureCode: transaction.failureCode,
+            };
+          }
+        }
       }
-    }
 
-    if (transaction.kind === WagerTransactionKind.LOSS) {
-      this.logger.log(`Transaction ${transaction.id} (LOSS) processed without balance change`);
-      transaction.markProcessed(undefined, new Date());
-      await this.transactionRepository.save(transaction);
-      await this.emitProcessedEvent(transaction);
-      return {
-        transactionId: transaction.id,
-        status: transaction.status,
-        idempotentReplay: false,
-      };
-    }
-
-    const direction = transaction.ledgerDirectionFor(reference);
-    let entry: import('../../../wallet/domain/aggregates/wallet-ledger-entry').WalletLedgerEntry | undefined;
-
-    const balanceBefore = wallet.balance.toJSON();
-
-    if (direction === 'DEBIT') {
-      try {
-        entry = wallet.debit(transaction.money, transaction.id);
-        this.logger.log(`Transaction ${transaction.id} debited ${transaction.money.toString()} from wallet ${props.walletId}`);
-      } catch {
-        this.logger.warn(`Transaction ${transaction.id} rejected: insufficient balance`);
-        transaction.reject(FailureCode.INSUFFICIENT_BALANCE);
+      if (transaction.kind === WagerTransactionKind.LOSS) {
+        this.logger.log(`Transaction ${transaction.id} (LOSS) processed without balance change`);
+        transaction.markProcessed(undefined, new Date());
         await this.transactionRepository.save(transaction);
-        await this.emitRejectedEvent(transaction);
+        await this.emitProcessedEvent(transaction);
         return {
           transactionId: transaction.id,
           status: transaction.status,
-          failureCode: transaction.failureCode,
+          idempotentReplay: false,
         };
       }
-    } else if (direction === 'CREDIT') {
-      entry = wallet.credit(transaction.money, transaction.id);
-      this.logger.log(`Transaction ${transaction.id} credited ${transaction.money.toString()} to wallet ${props.walletId}`);
-    }
 
-    transaction.markProcessed(reference?.id, new Date());
+      const direction = transaction.ledgerDirectionFor(reference);
+      let entry: import('../../../wallet/domain/aggregates/wallet-ledger-entry').WalletLedgerEntry | undefined;
 
-    await this.transactionRepository.save(transaction);
-    await this.walletRepository.save(wallet);
-    if (entry) {
-      await this.ledgerRepository.save(entry);
-    }
+      const balanceBefore = wallet.balance.toJSON();
 
-    await this.emitProcessedEvent(transaction, entry);
+      if (direction === 'DEBIT') {
+        try {
+          entry = wallet.debit(transaction.money, transaction.id);
+          this.logger.log(`Transaction ${transaction.id} debited ${transaction.money.toString()} from wallet ${props.walletId}`);
+        } catch {
+          this.logger.warn(`Transaction ${transaction.id} rejected: insufficient balance`);
+          transaction.reject(FailureCode.INSUFFICIENT_BALANCE);
+          await this.transactionRepository.save(transaction);
+          await this.emitRejectedEvent(transaction);
+          return {
+            transactionId: transaction.id,
+            status: transaction.status,
+            failureCode: transaction.failureCode,
+          };
+        }
+      } else if (direction === 'CREDIT') {
+        entry = wallet.credit(transaction.money, transaction.id);
+        this.logger.log(`Transaction ${transaction.id} credited ${transaction.money.toString()} to wallet ${props.walletId}`);
+      }
 
-    if (entry) {
-      await this.emitBalanceChangedEvent(wallet.id, transaction.id, direction!, balanceBefore, wallet.balance.toJSON(), wallet.version);
-    }
+      transaction.markProcessed(reference?.id, new Date());
 
-    this.logger.log(`Transaction ${transaction.id} processed successfully, new balance: ${wallet.balance.toString()}`);
+      await this.transactionRepository.save(transaction);
+      await this.walletRepository.save(wallet);
+      if (entry) {
+        await this.ledgerRepository.save(entry);
+      }
 
-    return {
-      transactionId: transaction.id,
-      status: transaction.status,
-      balance: wallet.balance.toJSON(),
-      idempotentReplay: false,
-    };
+      await this.emitProcessedEvent(transaction, entry);
+
+      if (entry) {
+        await this.emitBalanceChangedEvent(wallet.id, transaction.id, direction!, balanceBefore, wallet.balance.toJSON(), wallet.version);
+      }
+
+      this.logger.log(`Transaction ${transaction.id} processed successfully, new balance: ${wallet.balance.toString()}`);
+
+      return {
+        transactionId: transaction.id,
+        status: transaction.status,
+        balance: wallet.balance.toJSON(),
+        idempotentReplay: false,
+      };
+    });
   }
 
   async processPendingReferences(limit: number = 50): Promise<number> {
