@@ -21,6 +21,7 @@ export interface WagerTransactionRepositoryPort {
     providerId: string,
     externalTransactionId: string,
   ): Promise<WagerTransaction | null>;
+  findByReferenceTransactionId(referenceTransactionId: string): Promise<WagerTransaction[]>;
   findByWalletId(
     walletId: string,
     limit?: number,

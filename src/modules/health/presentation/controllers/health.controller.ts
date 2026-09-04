@@ -1,9 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
-import { MikroORM } from '@mikro-orm/postgresql';
+import { Controller, Get, Inject } from '@nestjs/common';
+import { EntityManager } from '@mikro-orm/postgresql';
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly orm: MikroORM) {}
+  constructor(@Inject(EntityManager) private readonly em: EntityManager) {}
 
   @Get('live')
   liveness() {
@@ -13,10 +13,10 @@ export class HealthController {
   @Get('ready')
   async readiness() {
     try {
-      const isConnected = await this.orm.isConnected();
+      await this.em.execute('SELECT 1');
       return {
-        status: isConnected ? 'ok' : 'down',
-        database: isConnected ? 'connected' : 'disconnected',
+        status: 'ok',
+        database: 'connected',
         timestamp: new Date().toISOString(),
       };
     } catch {

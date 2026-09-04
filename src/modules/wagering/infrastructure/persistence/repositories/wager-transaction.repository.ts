@@ -167,6 +167,17 @@ export class WagerTransactionRepository implements WagerTransactionRepositoryPor
     return this.findByStatus('PENDING_REFERENCE', limit);
   }
 
+  async findByReferenceTransactionId(referenceTransactionId: string): Promise<WagerTransaction[]> {
+    const entities = await this.em.find(
+      WagerTransactionEntity,
+      { referenceTransactionId },
+      {
+        orderBy: { createdAt: 'ASC' },
+      },
+    );
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async updateStatus(id: string, status: string): Promise<void> {
     const entity = await this.em.findOne(WagerTransactionEntity, { id });
     if (entity) {

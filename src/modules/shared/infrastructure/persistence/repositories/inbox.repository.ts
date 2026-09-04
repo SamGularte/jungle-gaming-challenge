@@ -29,8 +29,13 @@ export class InboxRepository implements InboxRepositoryPort {
   }
 
   async save(message: InboxMessage): Promise<void> {
-    const entity = this.toEntity(message);
-    await this.em.persist(entity).flush();
+    await this.em.upsert(InboxMessageEntity, {
+      messageId: message.messageId,
+      consumerName: message.consumerName,
+      payloadHash: message.payloadHash,
+      receivedAt: message.receivedAt,
+      processedAt: message.processedAt ?? null,
+    });
   }
 
   async findByConsumerAndMessageId(

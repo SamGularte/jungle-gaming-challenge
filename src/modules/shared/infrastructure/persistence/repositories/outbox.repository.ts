@@ -35,13 +35,31 @@ export class OutboxRepository implements OutboxRepositoryPort {
   }
 
   async save(message: OutboxMessage): Promise<void> {
-    const entity = this.toEntity(message);
-    await this.em.persist(entity).flush();
+    await this.em.upsert(OutboxMessageEntity, {
+      id: message.id,
+      aggregateId: message.aggregateId,
+      eventType: message.eventType,
+      payload: { ...message.payload },
+      occurredAt: message.occurredAt,
+      attempts: message.attempts,
+      nextAttemptAt: message.nextAttemptAt ?? null,
+      publishedAt: message.publishedAt ?? null,
+    });
   }
 
   async saveMany(messages: OutboxMessage[]): Promise<void> {
-    const entities = messages.map((m) => this.toEntity(m));
-    await this.em.persist(entities).flush();
+    for (const m of messages) {
+      await this.em.upsert(OutboxMessageEntity, {
+        id: m.id,
+        aggregateId: m.aggregateId,
+        eventType: m.eventType,
+        payload: { ...m.payload },
+        occurredAt: m.occurredAt,
+        attempts: m.attempts,
+        nextAttemptAt: m.nextAttemptAt ?? null,
+        publishedAt: m.publishedAt ?? null,
+      });
+    }
   }
 
   async findById(id: string): Promise<OutboxMessage | null> {

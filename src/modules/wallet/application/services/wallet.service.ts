@@ -1,5 +1,6 @@
 import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { Wallet } from '../../domain/aggregates/wallet';
+import { WalletLedgerEntry, LedgerDirection } from '../../domain/aggregates/wallet-ledger-entry';
 import { Money } from '../../domain/value-objects/money';
 import { WalletRepository } from '../../infrastructure/persistence/repositories/wallet.repository';
 import { LedgerRepository } from '../../infrastructure/persistence/repositories/ledger.repository';
@@ -31,6 +32,25 @@ export class WalletService {
     });
 
     await this.walletRepository.save(wallet);
+
+    if (money.isPositive()) {
+      const openingTransactionId = randomUUID();
+      const balanceAfter = wallet.balance.toJSON();
+      const balanceBefore = Money.zero(money.currency).toJSON();
+
+      const entry = WalletLedgerEntry.create({
+        walletId: wallet.id,
+        transactionId: openingTransactionId,
+        direction: LedgerDirection.CREDIT,
+        money: money,
+        balanceBefore: Money.zero(money.currency),
+        balanceAfter: wallet.balance,
+      });
+
+      await this.ledgerRepository.save(entry);
+      this.logger.log(`OPENING transaction created for wallet ${wallet.id}, credit ${money.toString()}`);
+    }
+
     this.logger.log(`Wallet created: ${wallet.id} for player ${playerId}`);
     return wallet;
   }

@@ -398,6 +398,10 @@ export class WagerTransaction {
     ].includes(this.kind);
   }
 
+  hasExceededMaxRetries(maxRetries: number = 5): boolean {
+    return this._status === WagerTransactionStatus.PENDING_REFERENCE;
+  }
+
   toJSON(): {
     id: string;
     providerId: string;
